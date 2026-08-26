@@ -21,7 +21,7 @@ import java.util.Random;
  * territory. See README.md's Tips section for ideas (finding your nearest
  * territory, tracking the opponent, etc.) left undone here.
  */
-public final class ExampleAgentController implements AgentController {
+public final class BasicStateMachine implements AgentController {
 
     private static final int RETURN_TRAIL_THRESHOLD = 4;
 

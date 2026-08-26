@@ -1,8 +1,8 @@
 package territorygame.controller;
 
 import candidate.CandidateController;
-import candidate.examples.ExampleAgentController;
-import candidate.examples.RandomAgentController;
+import candidate.examples.BasicStateMachine;
+import candidate.examples.RandomStateMachine;
 import territorygame.api.AgentController;
 
 import java.util.List;
@@ -19,9 +19,9 @@ public final class AvailableControllers {
     }
 
     public static final List<ControllerOption> ALL = List.of(
-            new ControllerOption("Example Agent", ExampleAgentController::new),
-            new ControllerOption("Provided Bot", ProvidedBotController::new),
-            new ControllerOption("Random Agent", RandomAgentController::new),
+            new ControllerOption("Basic State Machine", BasicStateMachine::new),
+            new ControllerOption("Enemy State Machine", EnemyStateMachine::new),
+            new ControllerOption("Random State Machine", RandomStateMachine::new),
             new ControllerOption("Candidate Controller", CandidateController::new)
     );
 

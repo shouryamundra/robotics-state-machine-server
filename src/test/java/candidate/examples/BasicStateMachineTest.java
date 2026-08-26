@@ -16,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** Confirms the example agent can play many turns against itself without any framework error. */
-class ExampleAgentControllerTest {
+class BasicStateMachineTest {
 
     @Test
     void playsManyTurnsAgainstItselfWithoutFrameworkErrors() throws InterruptedException {
@@ -27,8 +27,8 @@ class ExampleAgentControllerTest {
                 20
         );
         List<AgentController> controllers = List.of(
-                new ExampleAgentController(),
-                new ExampleAgentController()
+                new BasicStateMachine(),
+                new BasicStateMachine()
         );
         GameEngine engine = new GameEngine(config, controllers);
         BlockingQueue<GameSnapshot> snapshots = new LinkedBlockingQueue<>();

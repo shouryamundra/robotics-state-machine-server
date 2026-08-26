@@ -46,8 +46,8 @@ public final class GameWindow extends JFrame implements GameObserver {
     public GameWindow(GameConfig config) {
         super("Territory Capture");
 
-        player0Combo.setSelectedIndex(0); // Example Agent
-        player1Combo.setSelectedIndex(1); // Provided Bot
+        player0Combo.setSelectedIndex(0); // Basic State Machine
+        player1Combo.setSelectedIndex(1); // Enemy State Machine
 
         List<AgentController> initialControllers = currentSelections();
         this.gameEngine = new GameEngine(config, initialControllers);

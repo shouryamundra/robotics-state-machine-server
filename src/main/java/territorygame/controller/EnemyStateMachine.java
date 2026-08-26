@@ -21,7 +21,7 @@ import java.util.Random;
  * returns home after short excursions, and prefers open space when
  * expanding. Not part of the candidate-facing surface.
  */
-public final class ProvidedBotController implements AgentController {
+public final class EnemyStateMachine implements AgentController {
 
     private static final int RETURN_TRAIL_THRESHOLD = 3;
 

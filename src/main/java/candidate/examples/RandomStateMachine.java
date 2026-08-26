@@ -11,10 +11,11 @@ import java.util.Random;
 /**
  * Simplest baseline controller: picks uniformly among directions that are
  * mechanically valid (in bounds, not onto the opponent's agent). Does not
- * avoid its own trail, so it can legitimately kill itself. It isn't a
- * state machine — no persistent decision state, just a random pick each turn.
+ * avoid its own trail, so it can legitimately kill itself. Not really a
+ * state machine — no persistent decision state, just a random pick each
+ * turn — the name just matches the other examples for consistency.
  */
-public final class RandomAgentController implements AgentController {
+public final class RandomStateMachine implements AgentController {
 
     private final Random random = new Random(7);
 
