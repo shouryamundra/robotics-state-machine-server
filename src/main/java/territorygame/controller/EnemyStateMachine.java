@@ -171,16 +171,12 @@ public final class EnemyStateMachine implements AgentController {
 
     /** Chases the opponent's visible trail to stop an in-progress capture cold; otherwise falls back to heading home. */
     private Direction pickDefensive(GameApi game) {
-        Optional<GridPosition> opponentTrail = nearestVisible(game, CellViewType.OPPONENT_TRAIL);
-        if (opponentTrail.isPresent()) {
-            return chooseBest(huntableDirections(game), distanceTo(game, opponentTrail.get()));
-        }
-        return pickReceding(game);
+        return huntOpponentTrail(game).orElseGet(() -> pickReceding(game));
     }
 
     /** Deterministically pushes toward whichever safe direction opens onto the most free space. */
     private Direction pickExpanding(GameApi game) {
-        return chooseBest(safeDirections(game), Comparator.comparingInt((Direction d) -> openNeighborCount(game, d)).reversed());
+        return chooseBest(safeDirections(game), mostOpenFirst(game));
     }
 
     /** Stays inside our own territory if any safe move lands there (zero trail risk); otherwise heads for the nearest of it. */
@@ -189,7 +185,7 @@ public final class EnemyStateMachine implements AgentController {
                 .filter(direction -> typeAt(game, destination(game, direction)) == CellViewType.SELF_TERRITORY)
                 .toList();
         if (!withinTerritory.isEmpty()) {
-            return chooseBest(withinTerritory, Comparator.comparingInt((Direction d) -> openNeighborCount(game, d)).reversed());
+            return chooseBest(withinTerritory, mostOpenFirst(game));
         }
         GridPosition target = nearestVisible(game, CellViewType.SELF_TERRITORY).orElse(game.getRespawnPosition());
         return chooseBest(safeDirections(game), distanceTo(game, target));
@@ -197,12 +193,16 @@ public final class EnemyStateMachine implements AgentController {
 
     /** Chases the opponent's trail for a kill if one's visible; otherwise cuts toward their territory to steal it on capture. */
     private Direction pickAggressive(GameApi game) {
-        Optional<GridPosition> opponentTrail = nearestVisible(game, CellViewType.OPPONENT_TRAIL);
-        if (opponentTrail.isPresent()) {
-            return chooseBest(huntableDirections(game), distanceTo(game, opponentTrail.get()));
-        }
-        GridPosition target = nearestVisible(game, CellViewType.OPPONENT_TERRITORY).orElse(game.getAgentPosition());
-        return chooseBest(safeDirections(game), distanceTo(game, target));
+        return huntOpponentTrail(game).orElseGet(() -> {
+            GridPosition target = nearestVisible(game, CellViewType.OPPONENT_TERRITORY).orElse(game.getAgentPosition());
+            return chooseBest(safeDirections(game), distanceTo(game, target));
+        });
+    }
+
+    /** Shared by DEFENSIVE and AGGRESSIVE: a direction that closes on the opponent's visible trail, if one is visible at all. */
+    private Optional<Direction> huntOpponentTrail(GameApi game) {
+        return nearestVisible(game, CellViewType.OPPONENT_TRAIL)
+                .map(target -> chooseBest(huntableDirections(game), distanceTo(game, target)));
     }
 
     /** Picks at random among the directions whose open-space score is close to the best, so it's never fully predictable. */
@@ -229,6 +229,10 @@ public final class EnemyStateMachine implements AgentController {
 
     private Comparator<Direction> distanceTo(GameApi game, GridPosition target) {
         return Comparator.comparingInt(direction -> MovementUtils.manhattanDistance(destination(game, direction), target));
+    }
+
+    private Comparator<Direction> mostOpenFirst(GameApi game) {
+        return Comparator.comparingInt((Direction direction) -> openNeighborCount(game, direction)).reversed();
     }
 
     private Direction chooseBest(List<Direction> candidates, Comparator<Direction> ranking) {
