@@ -12,19 +12,42 @@ turns wins.
 
 ## Requirements
 
-- Java 21
-- Maven
+- Java 21 (JDK)
 
-## Running it
+## Getting started
+
+### 1. Install Java 21
+
+Check first — you might already have it:
 
 ```
-mvn test        # run the test suite
-mvn exec:java    # launch the GUI
+java -version
 ```
 
-In the GUI, pick which controller occupies each player slot (Example
-Agent, Provided Bot, Random Agent, or the candidate's own controller), then
-use Start / Pause / Step / Reset to run a match.
+If that's missing or shows an older version:
+
+- **Windows:** Get the x64 Installer from [oracle.net](https://www.oracle.com/java/technologies/downloads/#jdk21-windows))
+- **macOS:** `brew install openjdk@21`
+- **Linux / WSL:** `sudo apt install openjdk-21-jdk` (Debian/Ubuntu — use
+  your distro's package manager otherwise)
+
+### 2. Clone the repository
+
+```
+git clone https://github.com/shouryamundra/robotics-state-machine-server.git
+cd robotics-state-machine-server
+```
+
+### 3. Compile and run
+
+```
+./mvnw compile exec:java     # macOS / Linux / WSL
+mvnw.cmd compile exec:java   # Windows (cmd or PowerShell)
+```
+
+In the GUI, pick which controller occupies each player slot (Basic State
+Machine, Enemy State Machine, Random State Machine, or the candidate's own
+controller), then use Start / Pause / Step / Reset to run a match.
 
 ## Candidate assessment
 
@@ -92,11 +115,11 @@ src/main/java/territorygame/
                 validation, Manhattan distance).
 
   controller/   Framework-internal AgentController implementations not
-                meant as examples to copy: ProvidedBotController (the
+                meant as examples to copy: EnemyStateMachine (the
                 standard assessment opponent) and AvailableControllers
                 (the static registry the GUI's controller picker reads
-                from — Example Agent, Provided Bot, Random Agent,
-                Candidate Controller).
+                from — Basic State Machine, Enemy State Machine, Random
+                State Machine, Candidate Controller).
 
   gui/          Swing viewer: GameWindow (controls, status, wiring) and
                 BoardPanel (custom-painted board rendering). No game-rule
@@ -107,105 +130,11 @@ src/main/java/territorygame/
 src/main/java/candidate/
   CandidateController.java   the file to edit for the assessment.
 
-  examples/                  Read-only reference controllers: ExampleAgentController
+  examples/                  Read-only reference controllers: BasicStateMachine
                               (a deliberately weak state-machine example) and
-                              RandomAgentController (the simplest possible baseline).
+                              RandomStateMachine (the simplest possible baseline).
                               Not templates for a good strategy.
 
 src/test/java/...            mirrors the main package layout.
 ```
 
-## Known issues / TODO
-
-Found via a multi-pass code review after the initial implementation. Not
-yet fixed — listed here so they're tracked instead of silent.
-
-**Correctness bugs:**
-
-- **Two agents can end up on the same cell.** In `MoveResolver.resolve`
-  (`rules/MoveResolver.java`), when a move kills the opponent by crossing
-  their trail, `respawnService.respawn(state, opponent)` runs *before*
-  `moverAgent.setPosition(destination)`. `RespawnService.choosePosition`
-  checks whether the opponent's fixed respawn point is occupied using the
-  *mover's pre-move position*, not the destination it's about to move to.
-  If the mover is walking onto the opponent's respawn point itself, the
-  occupancy check passes trivially, the opponent respawns there, and the
-  mover then moves onto the same cell — both agents end up stacked on one
-  cell, which permanently breaks the `AGENT > TRAIL > TERRITORY > FREE`
-  visibility precedence for that cell (the opponent becomes invisible to
-  both players' `getVisibleGrid()`). Fix: compute the mover's destination
-  before running the opponent's respawn, and have `RespawnService` check
-  against it too.
-- **Exceptions inside `GameEngine`'s background tasks vanish silently.**
-  `start()`/`step()`/`reset()` all submit to a single-thread
-  `ExecutorService` (`engine/GameEngine.java`) via `submit(Runnable)`;
-  nothing ever calls `.get()` on the returned `Future`, so any uncaught
-  exception (a buggy controller throwing, or the `RespawnService` fallback
-  below) kills the in-flight task with zero observable effect — the match
-  just stops updating, `running` stays `true` forever, and Start/Pause/
-  Step/Reset all appear to do nothing afterward.
-- **`RespawnService.choosePosition`'s fallback can throw.** If
-  `starting.territorySize=1` and the opponent happens to be standing on
-  that single cell, the fallback search's `.orElseThrow()`
-  (`rules/RespawnService.java`) throws `IllegalStateException` — which,
-  combined with the point above, freezes the engine with no diagnostic.
-- **The two-player assumption is declared but never enforced.**
-  `GameState`'s javadoc states it assumes exactly two players, but neither
-  `GameConfig` nor `GameEngine` validates `respawn.count`.
-  `respawn.count=1` crashes on the first move inside
-  `GameState.getOpponent`; `respawn.count=3` doesn't crash at all — it
-  silently treats one player as invisible to every rule (collision,
-  trail-kill, respawn, visibility).
-- **`GameConfig` only validates that properties parse, not their values.**
-  Negative/zero board dimensions, out-of-bounds respawn positions,
-  overlapping starting territories, and even `visibility.windowSize`
-  values are all accepted silently or fail later with a confusing
-  exception several layers away from the actual misconfiguration.
-- **`TurnManager`'s controller-retry loop has no cap.** A cornered agent
-  or a controller that never calls a successful `move()` spins the retry
-  loop forever, wedging the single-thread executor — since every engine
-  command shares that one executor, this freezes Start/Pause/Step/Reset
-  entirely, not just that one match.
-- **`GameSnapshot.cells` is a raw array, not defensively copied.** Despite
-  the class's javadoc claiming it's "immutable, fully copied, safe to hand
-  across threads," a Java record never defensively copies array-typed
-  components — a second observer holding the same snapshot instance could
-  mutate the shared array. The same issue means the record's
-  auto-generated `equals()`/`hashCode()` use array reference identity, so
-  two snapshots with identical board state are never considered equal.
-
-**Code quality (duplication):**
-
-- `RespawnService` reimplements `MovementUtils.manhattanDistance` as a
-  private method instead of calling it.
-- Board-bounds checking exists as three independent implementations:
-  `Board.isWithinBounds`, `MovementUtils.isWithinBoard`, and a private
-  copy in `ObservedBoard`.
-- `TerritoryResolver.cardinalNeighbors` hand-rolls neighbor arithmetic
-  that duplicates `MovementUtils.nextPosition` + `isWithinBoard`.
-- The "scan `VisibleCell[][]` for a matching position" loop is
-  independently written four times (`MovementUtils.isValidMove`,
-  `ProvidedBotController.typeAt`, `ProvidedBotController.nearestSelfTerritory`,
-  `ObservedBoard.update`).
-- The two example controllers duplicate the "collect mechanically-valid
-  directions" loop instead of sharing a helper.
-- A uniform-random-direction picker is duplicated three times across
-  `ProvidedBotController`, `ExampleAgentController`, and
-  `RandomAgentController`.
-- `ProvidedBotController.chooseExpandingDirection`/`chooseReturningDirection`
-  are copy-pasted, differing only in which comparator is applied.
-
-**Efficiency:**
-
-- `Board.territoryCount`/`territoryOf` are full O(width×height) scans on
-  every call, called at least twice per turn for the GUI snapshot, despite
-  `Board` already tracking ownership incrementally.
-- `GameEngine.buildSnapshot` rebuilds the entire cell grid from scratch
-  every turn even though a typical move changes 1-2 cells.
-- `TerritoryResolver`'s flood fill allocates a new list and up to four
-  `GridPosition` objects per visited cell.
-- `MovementUtils.isValidMove` scans the whole visible grid to guard a
-  case its own comment admits is unreachable given the board-bounds check
-  already above it.
-- `RespawnService.clearAllTerritoryOf` does a redundant full-board scan
-  and `Set` allocation on every respawn.
