@@ -77,6 +77,28 @@ public final class GameEngine {
         observers.add(observer);
     }
 
+    /** Changes the pause between turns during continuous play (see start()). Takes effect from the next turn on. */
+    public void setTurnDelayMillis(int turnDelayMillis) {
+        this.turnDelayMillis = turnDelayMillis;
+    }
+
+    /**
+     * Replaces the controller for one player slot (0-based, matching the
+     * order passed to the constructor/reset) without resetting the match —
+     * position, territory, trail, and turns are all left as they are. Takes
+     * effect from that player's next turn on.
+     */
+    public void setController(int playerIndex, AgentController controller) {
+        submitSafely(() -> {
+            List<AgentController> updated = new ArrayList<>(controllersInPlayerOrder);
+            updated.set(playerIndex, controller);
+            controllersInPlayerOrder = List.copyOf(updated);
+
+            PlayerId id = state.getPlayers().get(playerIndex).getId();
+            controllers.put(id, controller);
+        });
+    }
+
     /** Runs turns continuously until paused or the match ends. No-op if already running or halted. */
     public void start() {
         if (running || halted) {

@@ -1,7 +1,6 @@
 package territorygame.gui;
 
 import territorygame.api.GridPosition;
-import territorygame.domain.PlayerId;
 import territorygame.engine.GameSnapshot;
 
 import javax.swing.JPanel;
@@ -9,19 +8,21 @@ import java.awt.Color;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
-import java.util.List;
 
 /**
  * Renders the full authoritative board with a single custom-painted panel
  * (no per-cell components): territory by owner color, trails, agents, and
- * the active player's visibility window. Pure rendering, no game rules.
+ * every player's visibility window (always shown, in that player's color —
+ * not just the currently active player's, so the boxes don't flicker on and
+ * off as the turn alternates). Pure rendering, no game rules.
  */
 public final class BoardPanel extends JPanel {
 
     private static final Color FREE_COLOR = new Color(235, 235, 235);
     private static final Color GRID_LINE_COLOR = new Color(210, 210, 210);
-    private static final Color VISIBILITY_BOX_COLOR = new Color(20, 20, 20);
-    private static final Color[] TERRITORY_COLORS = {
+
+    /** Shared with GameWindow's status panel so player colors match the board. */
+    static final Color[] TERRITORY_COLORS = {
             new Color(120, 170, 235),
             new Color(235, 140, 120)
     };
@@ -29,7 +30,7 @@ public final class BoardPanel extends JPanel {
             new Color(60, 110, 190),
             new Color(190, 80, 60)
     };
-    private static final Color[] AGENT_COLORS = {
+    static final Color[] AGENT_COLORS = {
             new Color(20, 60, 130),
             new Color(140, 30, 20)
     };
@@ -55,7 +56,7 @@ public final class BoardPanel extends JPanel {
 
         paintCells(g, cellSize);
         paintAgents(g, cellSize);
-        paintVisibilityWindow(g, cellSize);
+        paintVisibilityWindows(g, cellSize);
     }
 
     private void paintCells(Graphics2D g, int cellSize) {
@@ -99,25 +100,20 @@ public final class BoardPanel extends JPanel {
         }
     }
 
-    private void paintVisibilityWindow(Graphics2D g, int cellSize) {
-        PlayerId activeId = snapshot.activePlayerId();
-        List<GameSnapshot.PlayerSnapshot> players = snapshot.players();
-        GameSnapshot.PlayerSnapshot active = players.stream()
-                .filter(player -> player.id().equals(activeId))
-                .findFirst()
-                .orElse(null);
-        if (active == null) {
-            return;
+    private void paintVisibilityWindows(Graphics2D g, int cellSize) {
+        for (GameSnapshot.PlayerSnapshot player : snapshot.players()) {
+            g.setColor(AGENT_COLORS[player.id().index() % AGENT_COLORS.length]);
+            drawVisibilityBox(g, cellSize, player.position());
         }
+    }
 
+    private void drawVisibilityBox(Graphics2D g, int cellSize, GridPosition center) {
         int half = snapshot.visibilityWindowSize() / 2;
-        GridPosition center = active.position();
         int minX = Math.max(0, center.x() - half);
         int minY = Math.max(0, center.y() - half);
         int maxX = Math.min(snapshot.width() - 1, center.x() + half);
         int maxY = Math.min(snapshot.height() - 1, center.y() + half);
 
-        g.setColor(VISIBILITY_BOX_COLOR);
         g.drawRect(
                 minX * cellSize, minY * cellSize,
                 (maxX - minX + 1) * cellSize, (maxY - minY + 1) * cellSize
