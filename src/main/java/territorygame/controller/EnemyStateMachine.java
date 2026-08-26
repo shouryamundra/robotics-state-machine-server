@@ -70,6 +70,7 @@ public final class EnemyStateMachine implements AgentController {
     private final Random random;
     private State currentState = State.EXPANDING;
     private int previousOwnedTerritoryCount;
+    private boolean firstMove = true;
 
     public EnemyStateMachine() {
         this(new Random().nextLong());
@@ -82,6 +83,16 @@ public final class EnemyStateMachine implements AgentController {
 
     @Override
     public void takeTurn(GameApi game) {
+        // Even with different seeds, two fresh instances facing a symmetric
+        // starting position can still tie on every heuristic and open in the
+        // same relative direction. Forcing a genuinely random opening move
+        // (not just WANDERING's near-best random pick) breaks that up front.
+        if (firstMove) {
+            firstMove = false;
+            currentState = State.WANDERING;
+            game.move(pickUniformlyRandom(game));
+            return;
+        }
         State previousState = currentState;
         currentState = decideState(game, previousState);
         Direction direction = chooseDirection(game, currentState);
@@ -205,6 +216,15 @@ public final class EnemyStateMachine implements AgentController {
                 .filter(direction -> openNeighborCount(game, direction) >= bestScore - WANDER_OPENNESS_TOLERANCE)
                 .toList();
         return goodEnough.get(random.nextInt(goodEnough.size()));
+    }
+
+    /** Picks uniformly among every safe direction, with no bias toward open space at all — only used for the opening move. */
+    private Direction pickUniformlyRandom(GameApi game) {
+        List<Direction> candidates = safeDirections(game);
+        if (candidates.isEmpty()) {
+            return fallback();
+        }
+        return candidates.get(random.nextInt(candidates.size()));
     }
 
     private Comparator<Direction> distanceTo(GameApi game, GridPosition target) {
