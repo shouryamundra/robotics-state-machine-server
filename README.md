@@ -26,8 +26,8 @@ java -version
 
 If that's missing or shows an older version:
 
-- **Windows:** Get the x64 Installer from [oracle.net](https://www.oracle.com/java/technologies/downloads/#jdk21-windows))
-- **macOS:** `brew install openjdk@21`
+- **Windows:** Get the x64 Installer from [oracle.net](https://www.oracle.com/java/technologies/downloads/#jdk21-windows)
+- **macOS:** `brew install openjdk@21` (if you don't have homebrew, [install here](https://brew.sh/))
 - **Linux / WSL:** `sudo apt install openjdk-21-jdk` (Debian/Ubuntu — use
   your distro's package manager otherwise)
 
@@ -41,7 +41,7 @@ cd robotics-state-machine-server
 ### 3. Compile and run
 
 ```
-./mvnw compile exec:java     # macOS / Linux / WSL
+bash ./mvnw compile exec:java     # macOS / Linux / WSL
 mvnw.cmd compile exec:java   # Windows (cmd or PowerShell)
 ```
 
