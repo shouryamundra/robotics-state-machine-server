@@ -67,12 +67,18 @@ public final class EnemyStateMachine implements AgentController {
 
     private final Random random = new Random();
     private int randomWanderTurnsRemaining;
+    private State currentState = State.WANDERING;
 
     @Override
     public void takeTurn(GameApi game) {
-        State state = decideState(game);
-        Direction direction = chooseDirection(game, state);
+        currentState = decideState(game);
+        Direction direction = chooseDirection(game, currentState);
         game.move(direction);
+    }
+
+    @Override
+    public String getDebugState() {
+        return currentState.name();
     }
 
     // ---- State selection ----------------------------------------------

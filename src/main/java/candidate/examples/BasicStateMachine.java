@@ -46,6 +46,11 @@ public final class BasicStateMachine implements AgentController {
         updateState(game, result);
     }
 
+    @Override
+    public String getDebugState() {
+        return state.name();
+    }
+
     private void updateState(GameApi game, MoveResult result) {
         if (result == MoveResult.CAPTURED || result == MoveResult.DIED) {
             state = State.EXPANDING;

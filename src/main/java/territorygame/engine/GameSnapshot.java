@@ -83,7 +83,8 @@ public record GameSnapshot(
             int killCount,
             int deathCount,
             int remainingTurns,
-            List<GridPosition> trail
+            List<GridPosition> trail,
+            String debugState
     ) {
         private static final int KILL_SCORE_BONUS = 10;
 

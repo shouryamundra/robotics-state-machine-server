@@ -66,7 +66,7 @@ class GameSnapshotTest {
     @Test
     void playerSnapshotScoreCombinesTerritoryAndKillsWithABonus() {
         GameSnapshot.PlayerSnapshot player = new GameSnapshot.PlayerSnapshot(
-                player0, new GridPosition(0, 0), 5, 2, 0, 10, List.of());
+                player0, new GridPosition(0, 0), 5, 2, 0, 10, List.of(), null);
 
         assertEquals(25, player.score()); // 5 territory + 2 kills * 10
     }

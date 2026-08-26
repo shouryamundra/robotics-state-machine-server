@@ -8,4 +8,14 @@ package territorygame.api;
 public interface AgentController {
 
     void takeTurn(GameApi game);
+
+    /**
+     * Optional label for whatever internal state this controller considers
+     * itself to be in right now (e.g. an enum name), shown next to it in the
+     * GUI. Purely for observing a match; has no effect on gameplay. Return
+     * {@code null} (the default) if there's nothing worth showing.
+     */
+    default String getDebugState() {
+        return null;
+    }
 }

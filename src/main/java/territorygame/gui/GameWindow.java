@@ -262,13 +262,14 @@ public final class GameWindow extends JFrame implements GameObserver {
         private final JLabel killsLabel = new JLabel();
         private final JLabel deathsLabel = new JLabel();
         private final JLabel turnsLabel = new JLabel();
+        private final JLabel stateLabel = new JLabel();
 
         PlayerCard(int index) {
             border = BorderFactory.createTitledBorder("Player " + (index + 1));
             border.setTitleFont(border.getTitleFont() != null
                     ? border.getTitleFont().deriveFont(Font.BOLD)
                     : new JLabel().getFont().deriveFont(Font.BOLD));
-            panel = new JPanel(new GridLayout(5, 1, 0, 4));
+            panel = new JPanel(new GridLayout(6, 1, 0, 4));
             panel.setBorder(BorderFactory.createCompoundBorder(
                     border, BorderFactory.createEmptyBorder(6, 10, 10, 10)));
 
@@ -285,6 +286,7 @@ public final class GameWindow extends JFrame implements GameObserver {
             panel.add(killsLabel);
             panel.add(deathsLabel);
             panel.add(turnsLabel);
+            panel.add(stateLabel);
         }
 
         void update(GameSnapshot.PlayerSnapshot player, boolean active) {
@@ -295,6 +297,7 @@ public final class GameWindow extends JFrame implements GameObserver {
             killsLabel.setText("Kills: " + player.killCount());
             deathsLabel.setText("Deaths: " + player.deathCount());
             turnsLabel.setText("Turns left: " + player.remainingTurns());
+            stateLabel.setText(player.debugState() == null ? " " : "State: " + player.debugState());
         }
     }
 }

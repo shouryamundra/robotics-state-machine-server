@@ -16,6 +16,25 @@ else needs to change.
 - A move can be `INVALID` (off the board, or into the opponent's current
   spot). Nothing happens, and you get asked to move again.
 
+## `AgentController`
+
+This is the interface `CandidateController` implements.
+
+### takeTurn(game)
+```
+void takeTurn(GameApi game)
+```
+Called once per turn. Look at `game`, decide, call `game.move(...)`.
+
+### getDebugState()
+```
+default String getDebugState() { return null; }
+```
+Optional. Return a short label for whatever state you think you're in
+(e.g. an enum's name) and the GUI will show it next to your player card.
+Purely for watching a match — doesn't affect gameplay. Skip it if you
+don't want it; it does nothing by default.
+
 ## `GameApi`
 
 You get one of these each turn, in `takeTurn(GameApi game)`. Call `move()`

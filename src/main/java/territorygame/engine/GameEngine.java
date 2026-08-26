@@ -256,7 +256,8 @@ public final class GameEngine {
                     state.getKillCount(player.getId()),
                     state.getDeathCount(player.getId()),
                     state.getRemainingTurns(player.getId()),
-                    player.getAgent().getActiveTrail()
+                    player.getAgent().getActiveTrail(),
+                    controllers.get(player.getId()).getDebugState()
             ));
         }
 
