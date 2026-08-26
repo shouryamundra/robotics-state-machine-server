@@ -37,7 +37,7 @@ public final class GameEngine {
 
     private final GameConfig config;
     private List<AgentController> controllersInPlayerOrder;
-    private final TurnManager turnManager = new TurnManager();
+    private final TurnManager turnManager;
     private final List<GameObserver> observers = new ArrayList<>();
     private final ExecutorService executor = Executors.newSingleThreadExecutor(this::newDaemonThread);
 
@@ -53,8 +53,22 @@ public final class GameEngine {
      */
     private volatile boolean running;
 
+    /**
+     * Set when an unexpected exception escapes turn execution itself (as
+     * opposed to a controller's own exception, which {@link TurnManager}
+     * already contains). Blocks start()/step() until the next reset(); a
+     * message reaches the GUI via {@link GameSnapshot#errorMessage()}.
+     */
+    private volatile boolean halted;
+    private volatile String haltMessage;
+
+    /** Pause between turns during continuous play; starts at the configured default, adjustable live from the GUI. */
+    private volatile int turnDelayMillis;
+
     public GameEngine(GameConfig config, List<AgentController> controllersInPlayerOrder) {
         this.config = config;
+        this.turnManager = new TurnManager(config.maxAttemptsPerTurn());
+        this.turnDelayMillis = config.autoPlayTurnDelayMillis();
         this.controllersInPlayerOrder = List.copyOf(controllersInPlayerOrder);
         buildFreshMatch();
     }
@@ -63,13 +77,13 @@ public final class GameEngine {
         observers.add(observer);
     }
 
-    /** Runs turns continuously until paused or the match ends. No-op if already running. */
+    /** Runs turns continuously until paused or the match ends. No-op if already running or halted. */
     public void start() {
-        if (running) {
+        if (running || halted) {
             return;
         }
         running = true;
-        executor.submit(this::runUntilPausedOrOver);
+        submitSafely(this::runUntilPausedOrOver);
     }
 
     /** Stops the run loop after the in-flight turn finishes. */
@@ -77,10 +91,10 @@ public final class GameEngine {
         running = false;
     }
 
-    /** Runs exactly one turn, regardless of the running flag. */
+    /** Runs exactly one turn, regardless of the running flag. No-op if halted. */
     public void step() {
-        executor.submit(() -> {
-            if (!state.isGameOver()) {
+        submitSafely(() -> {
+            if (!halted && !state.isGameOver()) {
                 runSingleTurnAndPublish();
             }
         });
@@ -94,8 +108,10 @@ public final class GameEngine {
     /** Rebuilds a fresh match with a new set of controllers (e.g. after the GUI's slot selection changes). */
     public void reset(List<AgentController> controllersInPlayerOrder) {
         List<AgentController> newControllers = List.copyOf(controllersInPlayerOrder);
-        executor.submit(() -> {
+        submitSafely(() -> {
             running = false;
+            halted = false;
+            haltMessage = null;
             this.controllersInPlayerOrder = newControllers;
             buildFreshMatch();
             publish(buildSnapshot());
@@ -112,10 +128,39 @@ public final class GameEngine {
         running = false;
     }
 
+    /**
+     * Submits a task to the background executor, guarding against any
+     * exception that isn't already contained by {@link TurnManager} (e.g. a
+     * bug in the engine's own plumbing rather than a controller). Without
+     * this, such an exception would kill the executor's in-flight task
+     * silently and the match would just stop updating with no visible cause.
+     */
+    private void submitSafely(Runnable task) {
+        executor.submit(() -> {
+            try {
+                task.run();
+            } catch (Throwable t) {
+                handleFatalError(t);
+            }
+        });
+    }
+
+    private void handleFatalError(Throwable t) {
+        running = false;
+        halted = true;
+        haltMessage = "Internal engine error: " + t;
+        t.printStackTrace();
+        try {
+            publish(buildSnapshot());
+        } catch (Throwable ignored) {
+            // buildSnapshot()/publish() itself is what's broken; nothing more we can safely do.
+        }
+    }
+
     /** Paces continuous play so a match is watchable instead of finishing instantly. Step bypasses this entirely. */
     private void pauseBetweenTurns() {
         try {
-            Thread.sleep(config.autoPlayTurnDelayMillis());
+            Thread.sleep(turnDelayMillis);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
@@ -123,6 +168,9 @@ public final class GameEngine {
 
     private void runSingleTurnAndPublish() {
         turnManager.executeTurn(state, controllers, apis);
+        if (state.getLastTurnError() != null) {
+            System.err.println(state.getLastTurnError());
+        }
         publish(buildSnapshot());
     }
 
@@ -132,7 +180,8 @@ public final class GameEngine {
         for (int i = 0; i < config.respawnPositions().size(); i++) {
             PlayerId id = new PlayerId(i);
             GridPosition respawnPosition = config.respawnPositions().get(i);
-            List<GridPosition> startingTerritory = startingTerritoryAround(respawnPosition, config.startingTerritorySize(), board);
+            List<GridPosition> startingTerritory = GameConfig.startingTerritoryAround(
+                    respawnPosition, config.startingTerritorySize(), config.boardWidth(), config.boardHeight());
             for (GridPosition cell : startingTerritory) {
                 board.setTerritoryOwner(cell, id);
             }
@@ -152,20 +201,6 @@ public final class GameEngine {
             controllers.put(id, controllersInPlayerOrder.get(i));
             apis.put(id, new GameApiImpl(state, id, moveResolver, visibilityService));
         }
-    }
-
-    private List<GridPosition> startingTerritoryAround(GridPosition center, int size, Board board) {
-        int half = size / 2;
-        List<GridPosition> cells = new ArrayList<>();
-        for (int y = center.y() - half; y <= center.y() + half; y++) {
-            for (int x = center.x() - half; x <= center.x() + half; x++) {
-                GridPosition cell = new GridPosition(x, y);
-                if (board.isWithinBounds(cell)) {
-                    cells.add(cell);
-                }
-            }
-        }
-        return cells;
     }
 
     private void publish(GameSnapshot snapshot) {
@@ -196,15 +231,18 @@ public final class GameEngine {
                     player.getId(),
                     player.getAgent().getPosition(),
                     board.territoryCount(player.getId()),
+                    state.getKillCount(player.getId()),
+                    state.getDeathCount(player.getId()),
                     state.getRemainingTurns(player.getId()),
                     player.getAgent().getActiveTrail()
             ));
         }
 
+        String errorMessage = halted ? haltMessage : state.getLastTurnError();
         return new GameSnapshot(
                 width, height, cells, List.copyOf(playerSnapshots),
                 state.getActivePlayerId(), state.getLastMoveResult(),
-                config.visibilityWindowSize(), state.isGameOver()
+                config.visibilityWindowSize(), state.isGameOver(), errorMessage
         );
     }
 

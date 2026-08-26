@@ -48,7 +48,8 @@ class GameEngineTest {
         GameConfig config = new GameConfig(
                 8, 8, 5, 2,
                 List.of(new GridPosition(1, 1), new GridPosition(6, 6)),
-                1, 0 // no auto-play delay in tests
+                1, 0, // no auto-play delay in tests
+                20
         );
         List<AgentController> controllers = List.of(
                 new AlwaysMoveController(Direction.EAST),
@@ -81,7 +82,8 @@ class GameEngineTest {
         GameConfig config = new GameConfig(
                 8, 8, 5, 10,
                 List.of(new GridPosition(1, 1), new GridPosition(6, 6)),
-                1, 0 // no auto-play delay in tests
+                1, 0, // no auto-play delay in tests
+                20
         );
         List<AgentController> controllers = List.of(
                 new AlwaysMoveController(Direction.EAST),
@@ -107,7 +109,8 @@ class GameEngineTest {
         GameConfig config = new GameConfig(
                 8, 8, 5, 10,
                 List.of(new GridPosition(1, 1), new GridPosition(6, 6)),
-                1, 0 // no auto-play delay in tests
+                1, 0, // no auto-play delay in tests
+                20
         );
         List<AgentController> initialControllers = List.of(
                 new AlwaysMoveController(Direction.EAST),
