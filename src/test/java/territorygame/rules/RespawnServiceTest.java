@@ -92,6 +92,26 @@ class RespawnServiceTest {
     }
 
     @Test
+    void respawnFallsBackToTheWholeBoardWhenStartingTerritoryIsFullyBlocked() {
+        // A single-cell starting territory with the opponent standing on it:
+        // the starting-territory fallback has nowhere to go, so this must
+        // fall back to the nearest free cell anywhere on the board instead
+        // of throwing.
+        GridPosition singleCellRespawn = new GridPosition(5, 5);
+        GameState state = TestGames.twoPlayerState(
+                20, 20,
+                singleCellRespawn, List.of(singleCellRespawn),
+                singleCellRespawn, List.of(singleCellRespawn),
+                10
+        );
+
+        respawnService.respawn(state, player0);
+
+        // Four cells are at Manhattan distance 1 from (5,5); lowest y then x breaks the tie.
+        assertEquals(new GridPosition(5, 4), state.getPlayer(player0).getAgent().getPosition());
+    }
+
+    @Test
     void respawningOnePlayerDoesNotAffectTheOther() {
         GameState state = buildState(new GridPosition(15, 15));
 

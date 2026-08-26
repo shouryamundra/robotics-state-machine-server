@@ -6,8 +6,12 @@ import territorygame.domain.Board;
 import territorygame.domain.GameState;
 import territorygame.domain.Player;
 import territorygame.domain.PlayerId;
+import territorygame.helpers.MovementUtils;
 
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.List;
+import java.util.Optional;
 
 /**
  * Owns the complete death/reset operation for a player: clearing their
@@ -43,16 +47,37 @@ public final class RespawnService {
             return respawnPosition;
         }
 
-        return player.getStartingTerritory().stream()
+        Optional<GridPosition> withinStartingTerritory = player.getStartingTerritory().stream()
                 .filter(cell -> !cell.equals(opponentPosition))
-                .min(Comparator.comparingInt((GridPosition cell) -> manhattanDistance(cell, respawnPosition))
-                        .thenComparingInt(GridPosition::y)
-                        .thenComparingInt(GridPosition::x))
+                .min(nearestToRespawn(respawnPosition));
+        if (withinStartingTerritory.isPresent()) {
+            return withinStartingTerritory.get();
+        }
+
+        // Starting territory is fully blocked (e.g. a 1-cell starting territory
+        // with the opponent standing on it): fall back to the nearest free cell
+        // anywhere on the board rather than failing.
+        Board board = state.getBoard();
+        return allPositions(board.getWidth(), board.getHeight()).stream()
+                .filter(cell -> !cell.equals(opponentPosition))
+                .min(nearestToRespawn(respawnPosition))
                 .orElseThrow(() -> new IllegalStateException(
-                        "No unoccupied cell available in starting territory for " + playerId));
+                        "No unoccupied cell available anywhere on the board for " + playerId));
     }
 
-    private int manhattanDistance(GridPosition a, GridPosition b) {
-        return Math.abs(a.x() - b.x()) + Math.abs(a.y() - b.y());
+    private Comparator<GridPosition> nearestToRespawn(GridPosition respawnPosition) {
+        return Comparator.comparingInt((GridPosition cell) -> MovementUtils.manhattanDistance(cell, respawnPosition))
+                .thenComparingInt(GridPosition::y)
+                .thenComparingInt(GridPosition::x);
+    }
+
+    private List<GridPosition> allPositions(int width, int height) {
+        List<GridPosition> positions = new ArrayList<>(width * height);
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                positions.add(new GridPosition(x, y));
+            }
+        }
+        return positions;
     }
 }
