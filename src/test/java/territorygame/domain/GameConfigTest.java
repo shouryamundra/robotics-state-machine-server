@@ -19,7 +19,8 @@ class GameConfigTest {
                                         int startingTerritorySize, int autoPlayTurnDelayMillis,
                                         int maxAttemptsPerTurn) {
         return new GameConfig(boardWidth, boardHeight, visibilityWindowSize, turnsPerPlayer,
-                respawnPositions, startingTerritorySize, autoPlayTurnDelayMillis, maxAttemptsPerTurn);
+                respawnPositions, startingTerritorySize, autoPlayTurnDelayMillis, maxAttemptsPerTurn,
+                List.of(1L, 2L));
     }
 
     @Test
@@ -74,6 +75,13 @@ class GameConfigTest {
     void rejectsOverlappingStartingTerritories() {
         assertThrows(IllegalArgumentException.class, () -> validConfigWith(
                 10, 10, 5, 10, List.of(new GridPosition(4, 4), new GridPosition(5, 5)), 3, 0, 20));
+    }
+
+    @Test
+    void rejectsControllerSeedCountMismatch() {
+        assertThrows(IllegalArgumentException.class, () -> new GameConfig(
+                10, 10, 5, 10, List.of(new GridPosition(1, 1), new GridPosition(8, 8)), 1, 0, 20,
+                List.of(1L)));
     }
 
     @Test

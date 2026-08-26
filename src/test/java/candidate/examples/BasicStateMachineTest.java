@@ -24,7 +24,7 @@ class BasicStateMachineTest {
                 20, 20, 11, 40,
                 List.of(new GridPosition(4, 10), new GridPosition(15, 10)),
                 3, 0, // no auto-play delay in tests
-                20
+                20, List.of(1L, 2L)
         );
         List<AgentController> controllers = List.of(
                 new BasicStateMachine(),

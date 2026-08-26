@@ -6,12 +6,17 @@ import candidate.examples.RandomStateMachine;
 import territorygame.api.AgentController;
 
 import java.util.List;
-import java.util.function.Supplier;
+import java.util.function.Function;
 
 /** Registry of controller implementations the GUI offers per player slot. */
 public final class AvailableControllers {
 
-    public record ControllerOption(String label, Supplier<AgentController> factory) {
+    /**
+     * The factory takes the player slot's configured random seed
+     * ({@link territorygame.domain.GameConfig#controllerSeeds()}); most
+     * controllers have no randomness of their own and just ignore it.
+     */
+    public record ControllerOption(String label, Function<Long, AgentController> factory) {
         @Override
         public String toString() {
             return label;
@@ -19,10 +24,10 @@ public final class AvailableControllers {
     }
 
     public static final List<ControllerOption> ALL = List.of(
-            new ControllerOption("Basic State Machine", BasicStateMachine::new),
+            new ControllerOption("Basic State Machine", seed -> new BasicStateMachine()),
             new ControllerOption("Enemy State Machine", EnemyStateMachine::new),
-            new ControllerOption("Random State Machine", RandomStateMachine::new),
-            new ControllerOption("Candidate Controller", CandidateController::new)
+            new ControllerOption("Random State Machine", seed -> new RandomStateMachine()),
+            new ControllerOption("Candidate Controller", seed -> new CandidateController())
     );
 
     private AvailableControllers() {

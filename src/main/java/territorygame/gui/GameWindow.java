@@ -35,6 +35,7 @@ import java.util.List;
  */
 public final class GameWindow extends JFrame implements GameObserver {
 
+    private final GameConfig config;
     private final GameEngine gameEngine;
     private final BoardPanel boardPanel;
     private final JComboBox<ControllerOption> player0Combo = new JComboBox<>(toArray());
@@ -45,6 +46,7 @@ public final class GameWindow extends JFrame implements GameObserver {
 
     public GameWindow(GameConfig config) {
         super("Territory Capture");
+        this.config = config;
         this.boardPanel = new BoardPanel(config.boardWidth(), config.boardHeight());
 
         player0Combo.setSelectedIndex(0); // Basic State Machine
@@ -78,12 +80,13 @@ public final class GameWindow extends JFrame implements GameObserver {
     }
 
     private List<AgentController> currentSelections() {
-        return List.of(controllerFrom(player0Combo), controllerFrom(player1Combo));
+        return List.of(controllerFrom(player0Combo, 0), controllerFrom(player1Combo, 1));
     }
 
-    private AgentController controllerFrom(JComboBox<ControllerOption> combo) {
+    private AgentController controllerFrom(JComboBox<ControllerOption> combo, int playerIndex) {
         ControllerOption selected = (ControllerOption) combo.getSelectedItem();
-        return selected.factory().get();
+        long seed = config.controllerSeeds().get(playerIndex);
+        return selected.factory().apply(seed);
     }
 
     private JPanel buildTopPanel(int initialTurnDelayMillis) {
@@ -139,8 +142,8 @@ public final class GameWindow extends JFrame implements GameObserver {
         // next turn on, without resetting the match — position, territory,
         // trail, and turns are all left as they are. Reset still rebuilds a
         // fresh match with whatever's currently selected.
-        player0Combo.addActionListener(event -> gameEngine.setController(0, controllerFrom(player0Combo)));
-        player1Combo.addActionListener(event -> gameEngine.setController(1, controllerFrom(player1Combo)));
+        player0Combo.addActionListener(event -> gameEngine.setController(0, controllerFrom(player0Combo, 0)));
+        player1Combo.addActionListener(event -> gameEngine.setController(1, controllerFrom(player1Combo, 1)));
 
         return row;
     }

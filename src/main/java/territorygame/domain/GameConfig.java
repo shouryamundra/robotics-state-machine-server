@@ -35,7 +35,8 @@ public record GameConfig(
         List<GridPosition> respawnPositions,
         int startingTerritorySize,
         int autoPlayTurnDelayMillis,
-        int maxAttemptsPerTurn
+        int maxAttemptsPerTurn,
+        List<Long> controllerSeeds
 ) {
     private static final String DEFAULT_RESOURCE = "/game-config.properties";
 
@@ -74,6 +75,12 @@ public record GameConfig(
         if (startingTerritoriesOverlap(respawnPositions, startingTerritorySize, boardWidth, boardHeight)) {
             throw new IllegalArgumentException("Starting territories overlap for the configured respawn positions");
         }
+        controllerSeeds = List.copyOf(controllerSeeds);
+        if (controllerSeeds.size() != respawnPositions.size()) {
+            throw new IllegalArgumentException(
+                    "controllerSeeds must have exactly one entry per player: expected "
+                            + respawnPositions.size() + ", got " + controllerSeeds.size());
+        }
     }
 
     public static GameConfig loadDefault() {
@@ -96,11 +103,13 @@ public record GameConfig(
     private static GameConfig fromProperties(Properties properties) {
         int respawnCount = requireInt(properties, "respawn.count");
         List<GridPosition> respawnPositions = new ArrayList<>(respawnCount);
+        List<Long> controllerSeeds = new ArrayList<>(respawnCount);
         for (int i = 0; i < respawnCount; i++) {
             respawnPositions.add(new GridPosition(
                     requireInt(properties, "respawn." + i + ".x"),
                     requireInt(properties, "respawn." + i + ".y")
             ));
+            controllerSeeds.add(requireLong(properties, "controller.seed." + i));
         }
         return new GameConfig(
                 requireInt(properties, "board.width"),
@@ -110,7 +119,8 @@ public record GameConfig(
                 List.copyOf(respawnPositions),
                 requireInt(properties, "starting.territorySize"),
                 requireInt(properties, "autoplay.turnDelayMillis"),
-                requireInt(properties, "turn.maxAttemptsPerTurn")
+                requireInt(properties, "turn.maxAttemptsPerTurn"),
+                List.copyOf(controllerSeeds)
         );
     }
 
@@ -120,6 +130,14 @@ public record GameConfig(
             throw new IllegalStateException("Missing required config key: " + key);
         }
         return Integer.parseInt(value.trim());
+    }
+
+    private static long requireLong(Properties properties, String key) {
+        String value = properties.getProperty(key);
+        if (value == null) {
+            throw new IllegalStateException("Missing required config key: " + key);
+        }
+        return Long.parseLong(value.trim());
     }
 
     /** The square of cells (clipped to the board) centered on a respawn position. Shared by validation and match setup. */

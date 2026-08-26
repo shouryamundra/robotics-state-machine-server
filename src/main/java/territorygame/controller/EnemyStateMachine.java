@@ -67,9 +67,18 @@ public final class EnemyStateMachine implements AgentController {
         DEFENSIVE, RECEDING, AGGRESSIVE, EXPANDING, WANDERING
     }
 
-    private final Random random = new Random();
+    private final Random random;
     private State currentState = State.EXPANDING;
     private int previousOwnedTerritoryCount;
+
+    public EnemyStateMachine() {
+        this(new Random().nextLong());
+    }
+
+    /** Two instances of this same deterministic logic need different seeds, or they'll play out identically for long stretches. */
+    public EnemyStateMachine(long seed) {
+        this.random = new Random(seed);
+    }
 
     @Override
     public void takeTurn(GameApi game) {
