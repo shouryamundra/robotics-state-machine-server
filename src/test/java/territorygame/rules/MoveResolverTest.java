@@ -11,6 +11,7 @@ import territorygame.domain.PlayerId;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MoveResolverTest {
@@ -188,5 +189,57 @@ class MoveResolverTest {
         assertTrue(state.getPlayer(player1).getAgent().getActiveTrail().isEmpty());
         // The cell player0 stepped onto is now player0's own trail, not player1's.
         assertEquals(player0, state.getBoard().trailOwnerAt(new GridPosition(7, 6)));
+    }
+
+    @Test
+    void crossingOpponentTrailIncrementsTheMoverKillCount() {
+        GameState state = TestGames.twoPlayerState(
+                8, 8,
+                new GridPosition(7, 7), List.of(new GridPosition(7, 7)),
+                new GridPosition(6, 6), List.of(new GridPosition(6, 6)),
+                10
+        );
+        resolver.resolve(state, player1, Direction.EAST);  // (6,6)->(7,6) trail
+        resolver.resolve(state, player1, Direction.NORTH); // (7,6)->(7,5) trail
+
+        resolver.resolve(state, player0, Direction.NORTH); // (7,7)->(7,6), crosses player1's trail
+
+        assertEquals(1, state.getKillCount(player0));
+        assertEquals(0, state.getKillCount(player1));
+    }
+
+    @Test
+    void movingOntoOpponentsTrailAtItsOwnRespawnPointDoesNotStackAgents() {
+        // Regression test for the bug where killing an opponent by stepping
+        // onto a trail cell that happens to sit on the opponent's own
+        // respawn point could respawn the opponent onto the mover's
+        // destination, stacking both agents on one cell.
+        GridPosition opponentRespawn = new GridPosition(5, 5);
+        List<GridPosition> opponentStartingTerritory = List.of(
+                new GridPosition(4, 4), new GridPosition(5, 4), new GridPosition(6, 4),
+                new GridPosition(4, 5), new GridPosition(5, 5), new GridPosition(6, 5),
+                new GridPosition(4, 6), new GridPosition(5, 6), new GridPosition(6, 6)
+        );
+        GameState state = TestGames.twoPlayerState(
+                10, 10,
+                new GridPosition(4, 8), List.of(new GridPosition(4, 8)),
+                opponentRespawn, opponentStartingTerritory,
+                10
+        );
+        // Opponent's territory has since shifted away from its respawn
+        // point, leaving a trail cell sitting exactly on it.
+        state.getPlayer(player1).getAgent().setPosition(new GridPosition(9, 9));
+        state.getBoard().setTrailOwner(opponentRespawn, player1);
+        state.getPlayer(player1).getAgent().appendTrail(opponentRespawn);
+        state.getPlayer(player0).getAgent().setPosition(new GridPosition(4, 5));
+
+        MoveResult result = resolver.resolve(state, player0, Direction.EAST); // (4,5) -> (5,5)
+
+        assertEquals(MoveResult.MOVED, result);
+        GridPosition moverPosition = state.getPlayer(player0).getAgent().getPosition();
+        GridPosition opponentNewPosition = state.getPlayer(player1).getAgent().getPosition();
+        assertEquals(opponentRespawn, moverPosition);
+        assertNotEquals(moverPosition, opponentNewPosition);
+        assertEquals(1, state.getKillCount(player0));
     }
 }

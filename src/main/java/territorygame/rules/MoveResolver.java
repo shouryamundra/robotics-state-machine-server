@@ -43,14 +43,24 @@ public final class MoveResolver {
         PlayerId trailOwnerAtDestination = board.trailOwnerAt(destination);
         if (moverId.equals(trailOwnerAtDestination)) {
             respawnService.respawn(state, moverId);
+            state.incrementDeathCount(moverId);
             state.decrementRemainingTurns(moverId);
             return MoveResult.DIED;
         }
+
+        // Move the mover onto its destination before respawning a killed
+        // opponent, so RespawnService's occupancy check sees where the mover
+        // actually ends up rather than where it moved from. Otherwise, if the
+        // mover is stepping onto the opponent's own respawn point, the
+        // opponent could respawn there and the mover would then move onto the
+        // same cell.
+        moverAgent.setPosition(destination);
+
         if (opponent.getId().equals(trailOwnerAtDestination)) {
             respawnService.respawn(state, opponent.getId());
+            state.incrementKillCount(moverId);
+            state.incrementDeathCount(opponent.getId());
         }
-
-        moverAgent.setPosition(destination);
 
         PlayerId territoryOwnerAtDestination = board.territoryOwnerAt(destination);
         if (moverId.equals(territoryOwnerAtDestination) && !moverAgent.isTrailEmpty()) {

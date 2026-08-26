@@ -17,14 +17,19 @@ public final class GameState {
     private final Board board;
     private final List<Player> players;
     private final Map<PlayerId, Integer> remainingTurns = new HashMap<>();
+    private final Map<PlayerId, Integer> killCounts = new HashMap<>();
+    private final Map<PlayerId, Integer> deathCounts = new HashMap<>();
     private PlayerId activePlayerId;
     private MoveResult lastMoveResult;
+    private String lastTurnError;
 
     public GameState(Board board, List<Player> players, int turnsPerPlayer) {
         this.board = board;
         this.players = List.copyOf(players);
         for (Player player : players) {
             remainingTurns.put(player.getId(), turnsPerPlayer);
+            killCounts.put(player.getId(), 0);
+            deathCounts.put(player.getId(), 0);
         }
         this.activePlayerId = players.get(0).getId();
     }
@@ -78,5 +83,30 @@ public final class GameState {
 
     public void setLastMoveResult(MoveResult result) {
         this.lastMoveResult = result;
+    }
+
+    public int getKillCount(PlayerId id) {
+        return killCounts.get(id);
+    }
+
+    public void incrementKillCount(PlayerId id) {
+        killCounts.merge(id, 1, Integer::sum);
+    }
+
+    public int getDeathCount(PlayerId id) {
+        return deathCounts.get(id);
+    }
+
+    public void incrementDeathCount(PlayerId id) {
+        deathCounts.merge(id, 1, Integer::sum);
+    }
+
+    /** Display-only description of why the most recent turn produced no successful move, if any. */
+    public String getLastTurnError() {
+        return lastTurnError;
+    }
+
+    public void setLastTurnError(String lastTurnError) {
+        this.lastTurnError = lastTurnError;
     }
 }
