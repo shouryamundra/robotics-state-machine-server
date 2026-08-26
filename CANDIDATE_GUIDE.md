@@ -1,7 +1,7 @@
 # Candidate Guide
 
-You write one file: `src/main/java/candidate/CandidateController.java`. Nothing
-else needs to change.
+You write one file: `src/main/java/candidate/CandidateController.java`.
+That's it — nothing else in this codebase needs to change.
 
 ## The rules
 
@@ -18,27 +18,39 @@ else needs to change.
 
 ## `AgentController`
 
-This is the interface `CandidateController` implements.
+This is the interface `CandidateController` implements: one method to
+write, one you can ignore.
 
 ### takeTurn(game)
 ```
 void takeTurn(GameApi game)
 ```
-Called once per turn. Look at `game`, decide, call `game.move(...)`.
+Put your decision-making here. You never call this method yourself — the
+framework calls it for you, once whenever it's your turn.
+
+`game` (a `GameApi`, see below) is your window into the current turn: where
+you are, what you can see, how the match stands. Read what you need from
+it, decide on a direction, then call `game.move(direction)` **exactly
+once** — that call is your whole turn. `takeTurn` doesn't return anything;
+`move()` is how you actually act.
+
+If the direction you pick comes back `INVALID`, nothing happens and
+`takeTurn` is called again right away so you can try something else —
+still the same turn.
 
 ### getDebugState()
 ```
 default String getDebugState() { return null; }
 ```
-Optional. Return a short label for whatever state you think you're in
-(e.g. an enum's name) and the GUI will show it next to your player card.
-Purely for watching a match — doesn't affect gameplay. Skip it if you
-don't want it; it does nothing by default.
+Entirely optional. Return a short label for whatever state you think
+you're in (an enum's name works well), and the GUI shows it next to your
+player card — handy for watching a match and seeing what your controller
+is "thinking." No effect on gameplay either way.
 
 ## `GameApi`
 
-You get one of these each turn, in `takeTurn(GameApi game)`. Call `move()`
-once — anything but `INVALID` ends your turn.
+Your one-turn snapshot of the match. Read what you need, then call
+`game.move(direction)` once.
 
 ### getAgentPosition()
 ```
@@ -82,8 +94,8 @@ territory right now.
 VisibleCell[][] getVisibleGrid()
 ```
 The cells you can currently see, centered on you. Index it `[y][x]`. Each
-`VisibleCell` also has its real board position attached, so you never have
-to convert window coordinates to board coordinates yourself.
+`VisibleCell` carries its real board position too, so you never have to
+convert window coordinates to board coordinates yourself.
 
 ### getBoardWidth() / getBoardHeight()
 ```
@@ -132,13 +144,14 @@ enum CellViewType {
 }
 ```
 What's in a cell you can see. You'll never see the opponent's real player
-number — only `SELF_*` or `OPPONENT_*`. If more than one thing is true about
-a cell, the one listed first here wins: an agent standing on a trail shows
-as the agent, not the trail.
+number — only `SELF_*` or `OPPONENT_*`. If more than one thing is true
+about a cell, the one listed first here wins: an agent standing on a trail
+shows as the agent, not the trail.
 
 ## Helpers (`territorygame.helpers`)
 
-Small utilities so you don't have to write basic board math yourself.
+Basic board math you shouldn't have to write yourself — free to use from
+`CandidateController`.
 
 ### MovementUtils.nextPosition
 ```
@@ -192,6 +205,30 @@ Optional<CellViewType> get(GridPosition position)
 boolean hasObserved(GridPosition position)
 void clear()
 ```
-Remembers the last thing you saw at each cell, so you can look beyond your
-current window. It only remembers what you've actually seen — it won't
-guess whether a cell has changed since you last looked at it.
+Remembers the last thing you saw at each cell, so you can reason about
+parts of the board outside your current window. It only remembers what
+you've actually seen — it won't guess whether a cell has changed since.
+
+## Tips
+
+Nothing below is solved for you in the example controllers — worth
+thinking about once the basics are working:
+
+- **Avoid your own trail.** `isValidMove` only checks board bounds and the
+  opponent's agent; stepping on your own trail still passes it, but it
+  kills you.
+- **Watch for the opponent's trail too** — crossing it kills *them*, and
+  their agent's position hints at where their trail might be.
+- **Aggression vs. caution.** Compare `getOwnedTerritoryCellCount()` to
+  `getOpponentTerritoryCellCount()` — ahead, maybe hunt for a kill; behind,
+  maybe play safer.
+- **Getting home efficiently.** `getRespawnPosition()` isn't necessarily
+  your nearest owned cell once you've captured territory elsewhere —
+  scanning `getVisibleGrid()` for the nearest `SELF_TERRITORY` cell can do
+  better.
+- **Trail length is a trade-off.** Longer trails claim more area on
+  capture but leave you exposed for longer.
+- **Remember what you've seen.** `ObservedBoard` builds a picture beyond
+  your current visible window — useful for planning ahead.
+- **Remaining turns matter.** Early vs. late game might call for
+  different behavior — `getRemainingTurns()` tells you where you stand.

@@ -52,31 +52,7 @@ controller), then use Start / Pause / Step / Reset to run a match.
 ## Candidate assessment
 
 See `CANDIDATE_GUIDE.md` for the assessment task: the file to edit, the
-rules from a player's perspective, and the API reference.
-
-## Tips
-
-Ideas worth thinking about — none of these are solved for you in the
-example controllers:
-
-- **Avoid your own trail.** `MovementUtils.isValidMove` only checks board
-  bounds and the opponent's agent; stepping on your own trail still
-  passes it, but it kills you.
-- **Watch for the opponent's trail too** — crossing it kills *them*, and
-  their agent's position hints at where their trail might be.
-- **Aggression vs. caution.** Compare `getOwnedTerritoryCellCount()` to
-  `getOpponentTerritoryCellCount()` — ahead, maybe hunt for a kill;
-  behind, maybe you're under pressure and should play safer.
-- **Getting home efficiently.** `getRespawnPosition()` isn't necessarily
-  your nearest owned cell once you've captured territory elsewhere —
-  scanning `getVisibleGrid()` for the nearest `SELF_TERRITORY` cell can
-  do better.
-- **Trail length is a trade-off.** Longer trails claim more area on
-  capture but leave you exposed for longer.
-- **Remember what you've seen.** `ObservedBoard` builds a picture beyond
-  your current visible window — useful for planning ahead.
-- **Remaining turns matter.** Early vs. late game might call for
-  different behavior — `getRemainingTurns()` tells you where you stand.
+rules from a player's perspective, the API reference, and some tips.
 
 ## Project structure
 
