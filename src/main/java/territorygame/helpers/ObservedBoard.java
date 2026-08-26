@@ -33,24 +33,19 @@ public final class ObservedBoard {
     }
 
     public Optional<CellViewType> get(GridPosition position) {
-        if (!isWithinBounds(position)) {
+        if (!MovementUtils.isWithinBoard(position, width, height)) {
             return Optional.empty();
         }
         return Optional.ofNullable(observed[position.y()][position.x()]);
     }
 
     public boolean hasObserved(GridPosition position) {
-        return isWithinBounds(position) && observed[position.y()][position.x()] != null;
+        return MovementUtils.isWithinBoard(position, width, height) && observed[position.y()][position.x()] != null;
     }
 
     public void clear() {
         for (CellViewType[] row : observed) {
             java.util.Arrays.fill(row, null);
         }
-    }
-
-    private boolean isWithinBounds(GridPosition position) {
-        return position.x() >= 0 && position.x() < width
-                && position.y() >= 0 && position.y() < height;
     }
 }

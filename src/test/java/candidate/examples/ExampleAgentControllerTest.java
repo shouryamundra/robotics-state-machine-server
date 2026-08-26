@@ -23,7 +23,8 @@ class ExampleAgentControllerTest {
         GameConfig config = new GameConfig(
                 20, 20, 11, 40,
                 List.of(new GridPosition(4, 10), new GridPosition(15, 10)),
-                3, 0 // no auto-play delay in tests
+                3, 0, // no auto-play delay in tests
+                20
         );
         List<AgentController> controllers = List.of(
                 new ExampleAgentController(),

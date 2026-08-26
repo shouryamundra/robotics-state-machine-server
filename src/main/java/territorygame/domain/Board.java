@@ -1,6 +1,7 @@
 package territorygame.domain;
 
 import territorygame.api.GridPosition;
+import territorygame.helpers.MovementUtils;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -36,8 +37,7 @@ public final class Board {
     }
 
     public boolean isWithinBounds(GridPosition position) {
-        return position.x() >= 0 && position.x() < width
-                && position.y() >= 0 && position.y() < height;
+        return MovementUtils.isWithinBoard(position, width, height);
     }
 
     public PlayerId territoryOwnerAt(GridPosition position) {

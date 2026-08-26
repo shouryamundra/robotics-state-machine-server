@@ -5,7 +5,6 @@ import territorygame.api.Direction;
 import territorygame.api.GameApi;
 import territorygame.helpers.MovementUtils;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 
@@ -21,17 +20,11 @@ public final class RandomAgentController implements AgentController {
 
     @Override
     public void takeTurn(GameApi game) {
-        List<Direction> validDirections = new ArrayList<>();
-        for (Direction direction : Direction.values()) {
-            if (MovementUtils.isValidMove(game, direction)) {
-                validDirections.add(direction);
-            }
-        }
+        List<Direction> validDirections = MovementUtils.validDirections(game);
 
         Direction choice;
         if (validDirections.isEmpty()) {
-            Direction[] allDirections = Direction.values();
-            choice = allDirections[random.nextInt(allDirections.length)];
+            choice = MovementUtils.randomDirection(random);
         } else {
             choice = validDirections.get(random.nextInt(validDirections.size()));
         }

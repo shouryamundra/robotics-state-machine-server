@@ -1,13 +1,16 @@
 package territorygame.rules;
 
+import territorygame.api.Direction;
 import territorygame.api.GridPosition;
 import territorygame.domain.Agent;
 import territorygame.domain.Board;
 import territorygame.domain.GameState;
 import territorygame.domain.Player;
 import territorygame.domain.PlayerId;
+import territorygame.helpers.MovementUtils;
 
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 
@@ -64,7 +67,7 @@ public final class TerritoryResolver {
             }
         }
 
-        List<GridPosition> enclosed = new java.util.ArrayList<>();
+        List<GridPosition> enclosed = new ArrayList<>();
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
                 GridPosition position = new GridPosition(x, y);
@@ -87,11 +90,13 @@ public final class TerritoryResolver {
     }
 
     private List<GridPosition> cardinalNeighbors(GridPosition position, int width, int height) {
-        List<GridPosition> neighbors = new java.util.ArrayList<>(4);
-        if (position.x() > 0) neighbors.add(new GridPosition(position.x() - 1, position.y()));
-        if (position.x() < width - 1) neighbors.add(new GridPosition(position.x() + 1, position.y()));
-        if (position.y() > 0) neighbors.add(new GridPosition(position.x(), position.y() - 1));
-        if (position.y() < height - 1) neighbors.add(new GridPosition(position.x(), position.y() + 1));
+        List<GridPosition> neighbors = new ArrayList<>(4);
+        for (Direction direction : Direction.values()) {
+            GridPosition neighbor = MovementUtils.nextPosition(position, direction);
+            if (MovementUtils.isWithinBoard(neighbor, width, height)) {
+                neighbors.add(neighbor);
+            }
+        }
         return neighbors;
     }
 }

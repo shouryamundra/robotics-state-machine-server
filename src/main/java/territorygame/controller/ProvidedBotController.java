@@ -9,6 +9,7 @@ import territorygame.api.MoveResult;
 import territorygame.api.VisibleCell;
 import territorygame.helpers.MovementUtils;
 
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.Random;
@@ -50,29 +51,26 @@ public final class ProvidedBotController implements AgentController {
     }
 
     private Direction chooseExpandingDirection(GameApi game) {
-        List<Direction> safe = safeDirections(game);
-        if (safe.isEmpty()) {
-            return fallback();
-        }
-        return safe.stream()
-                .max((a, b) -> Integer.compare(openNeighborCount(game, a), openNeighborCount(game, b)))
-                .orElseThrow();
+        return chooseBest(game, Comparator.comparingInt((Direction direction) -> openNeighborCount(game, direction)).reversed());
     }
 
     private Direction chooseReturningDirection(GameApi game) {
+        Optional<GridPosition> target = nearestSelfTerritory(game);
+        if (target.isEmpty()) {
+            List<Direction> safe = safeDirections(game);
+            return safe.isEmpty() ? fallback() : safe.get(random.nextInt(safe.size()));
+        }
+        return chooseBest(game, Comparator.comparingInt(
+                (Direction direction) -> MovementUtils.manhattanDistance(destination(game, direction), target.get())));
+    }
+
+    /** Picks the safe direction ranked first by the given comparator, or a random fallback if none is safe. */
+    private Direction chooseBest(GameApi game, Comparator<Direction> ranking) {
         List<Direction> safe = safeDirections(game);
         if (safe.isEmpty()) {
             return fallback();
         }
-        Optional<GridPosition> target = nearestSelfTerritory(game);
-        if (target.isEmpty()) {
-            return safe.get(random.nextInt(safe.size()));
-        }
-        return safe.stream()
-                .min((a, b) -> Integer.compare(
-                        MovementUtils.manhattanDistance(destination(game, a), target.get()),
-                        MovementUtils.manhattanDistance(destination(game, b), target.get())))
-                .orElseThrow();
+        return safe.stream().min(ranking).orElseThrow();
     }
 
     /** Directions that are in bounds and land on neither trail nor the opponent's agent. */
@@ -125,18 +123,12 @@ public final class ProvidedBotController implements AgentController {
     }
 
     private CellViewType typeAt(GameApi game, GridPosition position) {
-        for (VisibleCell[] row : game.getVisibleGrid()) {
-            for (VisibleCell cell : row) {
-                if (cell.position().equals(position)) {
-                    return cell.type();
-                }
-            }
-        }
-        return CellViewType.FREE;
+        return MovementUtils.findCell(game.getVisibleGrid(), position)
+                .map(VisibleCell::type)
+                .orElse(CellViewType.FREE);
     }
 
     private Direction fallback() {
-        Direction[] values = Direction.values();
-        return values[random.nextInt(values.length)];
+        return MovementUtils.randomDirection(random);
     }
 }

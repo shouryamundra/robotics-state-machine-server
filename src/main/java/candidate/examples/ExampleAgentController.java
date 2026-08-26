@@ -1,24 +1,25 @@
 package candidate.examples;
 
 import territorygame.api.AgentController;
+import territorygame.api.CellViewType;
 import territorygame.api.Direction;
 import territorygame.api.GameApi;
 import territorygame.api.GridPosition;
 import territorygame.api.MoveResult;
+import territorygame.api.VisibleCell;
 import territorygame.helpers.MovementUtils;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 
 /**
  * Deliberately weak reference implementation. It demonstrates persistent
  * controller state, state transitions, calling move(), and reacting to
- * MoveResult — not a strategy worth copying. On purpose, it does not avoid
- * its own trail: EXPANDING wanders randomly and RETURNING heads straight
- * back toward its respawn point, so it can still walk over its own trail
- * and die. See README.md's Tips section for ideas (avoiding your own
- * trail, finding your nearest territory, etc.) left undone here.
+ * MoveResult — not a strategy worth copying. EXPANDING still wanders
+ * randomly and can walk over its own trail; RETURNING avoids its own trail
+ * when it can, but only steps around it, not toward the nearest owned
+ * territory. See README.md's Tips section for ideas (finding your nearest
+ * territory, tracking the opponent, etc.) left undone here.
  */
 public final class ExampleAgentController implements AgentController {
 
@@ -59,14 +60,9 @@ public final class ExampleAgentController implements AgentController {
 
     /** Wanders randomly among the mechanically safe directions. */
     private Direction pickExpandingDirection(GameApi game) {
-        List<Direction> safeDirections = new ArrayList<>();
-        for (Direction direction : Direction.values()) {
-            if (MovementUtils.isValidMove(game, direction)) {
-                safeDirections.add(direction);
-            }
-        }
+        List<Direction> safeDirections = MovementUtils.validDirections(game);
         if (safeDirections.isEmpty()) {
-            return randomDirection();
+            return MovementUtils.randomDirection(random);
         }
         return safeDirections.get(random.nextInt(safeDirections.size()));
     }
@@ -86,17 +82,41 @@ public final class ExampleAgentController implements AgentController {
         } else if (position.y() > home.y()) {
             preferred = Direction.NORTH;
         } else {
-            preferred = randomDirection();
+            preferred = MovementUtils.randomDirection(random);
         }
 
+        if (isSafeMove(game, preferred)) {
+            return preferred;
+        }
+
+        // Preferred direction would cross our own trail: try any other
+        // direction that avoids it before accepting that risk.
+        for (Direction direction : Direction.values()) {
+            if (isSafeMove(game, direction)) {
+                return direction;
+            }
+        }
+
+        // Nothing avoids our own trail — take the mechanically valid move anyway.
         if (MovementUtils.isValidMove(game, preferred)) {
             return preferred;
         }
-        return randomDirection();
+        return MovementUtils.randomDirection(random);
     }
 
-    private Direction randomDirection() {
-        Direction[] values = Direction.values();
-        return values[random.nextInt(values.length)];
+    /** Mechanically valid and not a step onto our own trail. */
+    private boolean isSafeMove(GameApi game, Direction direction) {
+        if (!MovementUtils.isValidMove(game, direction)) {
+            return false;
+        }
+        GridPosition destination = MovementUtils.nextPosition(game.getAgentPosition(), direction);
+        for (VisibleCell[] row : game.getVisibleGrid()) {
+            for (VisibleCell cell : row) {
+                if (cell.position().equals(destination)) {
+                    return cell.type() != CellViewType.SELF_TRAIL;
+                }
+            }
+        }
+        return true;
     }
 }

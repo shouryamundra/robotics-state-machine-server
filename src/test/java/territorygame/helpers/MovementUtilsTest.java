@@ -9,6 +9,9 @@ import territorygame.api.MoveResult;
 import territorygame.api.VisibleCell;
 
 import java.util.List;
+import java.util.Optional;
+import java.util.Random;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -77,6 +80,47 @@ class MovementUtilsTest {
         StubGameApi game = new StubGameApi(position, 5, 5, grid);
 
         assertTrue(MovementUtils.isValidMove(game, Direction.EAST));
+    }
+
+    @Test
+    void findCellReturnsTheCellAtAMatchingPosition() {
+        GridPosition target = new GridPosition(3, 2);
+        VisibleCell[][] grid = {{new VisibleCell(target, CellViewType.OPPONENT_TERRITORY)}};
+
+        Optional<VisibleCell> found = MovementUtils.findCell(grid, target);
+
+        assertTrue(found.isPresent());
+        assertEquals(CellViewType.OPPONENT_TERRITORY, found.get().type());
+    }
+
+    @Test
+    void findCellReturnsEmptyWhenPositionIsNotInTheGrid() {
+        VisibleCell[][] grid = {{new VisibleCell(new GridPosition(3, 2), CellViewType.FREE)}};
+
+        assertTrue(MovementUtils.findCell(grid, new GridPosition(9, 9)).isEmpty());
+    }
+
+    @Test
+    void validDirectionsExcludesOutOfBoundsAndOpponentAgentCells() {
+        GridPosition position = new GridPosition(0, 0);
+        GridPosition east = new GridPosition(1, 0);
+        GridPosition south = new GridPosition(0, 1);
+        VisibleCell[][] grid = {
+                {new VisibleCell(position, CellViewType.SELF_AGENT), new VisibleCell(east, CellViewType.OPPONENT_AGENT)},
+                {new VisibleCell(south, CellViewType.FREE), new VisibleCell(new GridPosition(1, 1), CellViewType.FREE)}
+        };
+        StubGameApi game = new StubGameApi(position, 5, 5, grid);
+
+        List<Direction> valid = MovementUtils.validDirections(game);
+
+        assertEquals(Set.of(Direction.SOUTH), Set.copyOf(valid));
+    }
+
+    @Test
+    void randomDirectionReturnsOneOfTheFourDirections() {
+        Direction direction = MovementUtils.randomDirection(new Random(1));
+
+        assertTrue(Set.of(Direction.values()).contains(direction));
     }
 
     /** Minimal GameApi test double exposing only what MovementUtils reads. */

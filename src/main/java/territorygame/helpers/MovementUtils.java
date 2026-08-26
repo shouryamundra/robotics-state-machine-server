@@ -6,6 +6,11 @@ import territorygame.api.GameApi;
 import territorygame.api.GridPosition;
 import territorygame.api.VisibleCell;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+import java.util.Random;
+
 /** Pure, stateless helpers for reasoning about movement and board bounds. */
 public final class MovementUtils {
 
@@ -46,15 +51,39 @@ public final class MovementUtils {
         if (!isWithinBoard(destination, game.getBoardWidth(), game.getBoardHeight())) {
             return false;
         }
-        for (VisibleCell[] row : game.getVisibleGrid()) {
+        // Visibility radius always covers adjacent cells, so an absent cell
+        // here is unreachable in practice; bounds are already confirmed above.
+        return findCell(game.getVisibleGrid(), destination)
+                .map(cell -> cell.type() != CellViewType.OPPONENT_AGENT)
+                .orElse(true);
+    }
+
+    /** Finds the visible cell at an absolute position, if it's within the visible window. */
+    public static Optional<VisibleCell> findCell(VisibleCell[][] visibleGrid, GridPosition position) {
+        for (VisibleCell[] row : visibleGrid) {
             for (VisibleCell cell : row) {
-                if (cell.position().equals(destination)) {
-                    return cell.type() != CellViewType.OPPONENT_AGENT;
+                if (cell.position().equals(position)) {
+                    return Optional.of(cell);
                 }
             }
         }
-        // Visibility radius always covers adjacent cells, so this is unreachable
-        // in practice; bounds have already been confirmed above.
-        return true;
+        return Optional.empty();
+    }
+
+    /** Directions that are mechanically valid right now: in bounds and not onto the opponent's agent. */
+    public static List<Direction> validDirections(GameApi game) {
+        List<Direction> directions = new ArrayList<>();
+        for (Direction direction : Direction.values()) {
+            if (isValidMove(game, direction)) {
+                directions.add(direction);
+            }
+        }
+        return directions;
+    }
+
+    /** Picks a uniformly random direction. */
+    public static Direction randomDirection(Random random) {
+        Direction[] values = Direction.values();
+        return values[random.nextInt(values.length)];
     }
 }
