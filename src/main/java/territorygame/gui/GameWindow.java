@@ -36,7 +36,7 @@ import java.util.List;
 public final class GameWindow extends JFrame implements GameObserver {
 
     private final GameEngine gameEngine;
-    private final BoardPanel boardPanel = new BoardPanel();
+    private final BoardPanel boardPanel;
     private final JComboBox<ControllerOption> player0Combo = new JComboBox<>(toArray());
     private final JComboBox<ControllerOption> player1Combo = new JComboBox<>(toArray());
     private final PlayerCard[] playerCards = {new PlayerCard(0), new PlayerCard(1)};
@@ -45,6 +45,7 @@ public final class GameWindow extends JFrame implements GameObserver {
 
     public GameWindow(GameConfig config) {
         super("Territory Capture");
+        this.boardPanel = new BoardPanel(config.boardWidth(), config.boardHeight());
 
         player0Combo.setSelectedIndex(0); // Basic State Machine
         player1Combo.setSelectedIndex(1); // Enemy State Machine
@@ -59,7 +60,11 @@ public final class GameWindow extends JFrame implements GameObserver {
         add(buildStatusPanel(), BorderLayout.SOUTH);
 
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setSize(1000, 980);
+        // pack() sizes the window from the components' own preferred sizes
+        // instead of a guessed pixel constant, so nothing gets clipped
+        // regardless of platform fonts or how wide the controls row ends up.
+        pack();
+        setMinimumSize(getSize());
         setLocationRelativeTo(null);
 
         // Triggers the first observer notification so the board paints
@@ -83,7 +88,7 @@ public final class GameWindow extends JFrame implements GameObserver {
 
     private JPanel buildTopPanel(int initialTurnDelayMillis) {
         JPanel panel = new JPanel(new BorderLayout());
-        panel.add(buildControlsRow(initialTurnDelayMillis), BorderLayout.NORTH);
+        panel.add(buildControlsPanel(initialTurnDelayMillis), BorderLayout.NORTH);
 
         errorLabel.setForeground(new Color(150, 0, 0));
         errorLabel.setOpaque(true);
@@ -99,25 +104,50 @@ public final class GameWindow extends JFrame implements GameObserver {
     private static final int MAX_TURN_DELAY_MILLIS = 500;
 
     /**
-     * BoxLayout (not FlowLayout) is deliberate: FlowLayout wraps overflow to
-     * a second line when the row is a bit too wide for the container, and
-     * that second line doesn't reliably get laid out with the rest on the
-     * first paint — a button can end up present but invisible. BoxLayout
-     * keeps everything in one row and shrinks instead of wrapping.
+     * Two stacked rows rather than one wide row: player selection on top,
+     * actions and speed below. A single row wide enough for both combo
+     * boxes, four buttons, and the speed slider can exceed the window width
+     * once a look-and-feel's fonts/padding are taken into account, and
+     * BoxLayout doesn't wrap — it would just run off the edge. Splitting the
+     * content is a fix that holds regardless of exact pixel widths, rather
+     * than another guessed constant.
      */
-    private JPanel buildControlsRow(int initialTurnDelayMillis) {
+    private JPanel buildControlsPanel(int initialTurnDelayMillis) {
         JPanel panel = new JPanel();
-        panel.setLayout(new BoxLayout(panel, BoxLayout.X_AXIS));
+        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
         panel.setBorder(BorderFactory.createEmptyBorder(12, 16, 12, 16));
+        panel.add(buildPlayerSelectionRow());
+        panel.add(Box.createVerticalStrut(10));
+        panel.add(buildActionsRow(initialTurnDelayMillis));
+        return panel;
+    }
 
-        panel.add(new JLabel("Player 1:"));
-        panel.add(Box.createHorizontalStrut(6));
-        panel.add(player0Combo);
-        panel.add(Box.createHorizontalStrut(20));
-        panel.add(new JLabel("Player 2:"));
-        panel.add(Box.createHorizontalStrut(6));
-        panel.add(player1Combo);
-        panel.add(Box.createHorizontalStrut(28));
+    private JPanel buildPlayerSelectionRow() {
+        JPanel row = new JPanel();
+        row.setLayout(new BoxLayout(row, BoxLayout.X_AXIS));
+
+        row.add(new JLabel("Player 1:"));
+        row.add(Box.createHorizontalStrut(6));
+        row.add(player0Combo);
+        row.add(Box.createHorizontalStrut(20));
+        row.add(new JLabel("Player 2:"));
+        row.add(Box.createHorizontalStrut(6));
+        row.add(player1Combo);
+        row.add(Box.createHorizontalGlue());
+
+        // Picking a different controller swaps it in for that slot from the
+        // next turn on, without resetting the match — position, territory,
+        // trail, and turns are all left as they are. Reset still rebuilds a
+        // fresh match with whatever's currently selected.
+        player0Combo.addActionListener(event -> gameEngine.setController(0, controllerFrom(player0Combo)));
+        player1Combo.addActionListener(event -> gameEngine.setController(1, controllerFrom(player1Combo)));
+
+        return row;
+    }
+
+    private JPanel buildActionsRow(int initialTurnDelayMillis) {
+        JPanel row = new JPanel();
+        row.setLayout(new BoxLayout(row, BoxLayout.X_AXIS));
 
         JButton startButton = new JButton("Start");
         JButton pauseButton = new JButton("Pause");
@@ -127,25 +157,18 @@ public final class GameWindow extends JFrame implements GameObserver {
         pauseButton.addActionListener(event -> gameEngine.pause());
         stepButton.addActionListener(event -> gameEngine.step());
         resetButton.addActionListener(event -> gameEngine.reset(currentSelections()));
-        panel.add(startButton);
-        panel.add(Box.createHorizontalStrut(8));
-        panel.add(pauseButton);
-        panel.add(Box.createHorizontalStrut(8));
-        panel.add(stepButton);
-        panel.add(Box.createHorizontalStrut(8));
-        panel.add(resetButton);
-        panel.add(Box.createHorizontalStrut(28));
-        panel.add(buildSpeedControl(initialTurnDelayMillis));
-        panel.add(Box.createHorizontalGlue());
+        row.add(startButton);
+        row.add(Box.createHorizontalStrut(8));
+        row.add(pauseButton);
+        row.add(Box.createHorizontalStrut(8));
+        row.add(stepButton);
+        row.add(Box.createHorizontalStrut(8));
+        row.add(resetButton);
+        row.add(Box.createHorizontalStrut(28));
+        row.add(buildSpeedControl(initialTurnDelayMillis));
+        row.add(Box.createHorizontalGlue());
 
-        // Picking a different controller swaps it in for that slot from the
-        // next turn on, without resetting the match — position, territory,
-        // trail, and turns are all left as they are. Reset still rebuilds a
-        // fresh match with whatever's currently selected.
-        player0Combo.addActionListener(event -> gameEngine.setController(0, controllerFrom(player0Combo)));
-        player1Combo.addActionListener(event -> gameEngine.setController(1, controllerFrom(player1Combo)));
-
-        return panel;
+        return row;
     }
 
     /** Controls the pause between turns during continuous play (Start); Step always runs immediately. */

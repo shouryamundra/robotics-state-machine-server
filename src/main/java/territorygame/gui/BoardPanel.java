@@ -5,6 +5,7 @@ import territorygame.engine.GameSnapshot;
 
 import javax.swing.JPanel;
 import java.awt.Color;
+import java.awt.Dimension;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
@@ -35,12 +36,32 @@ public final class BoardPanel extends JPanel {
             new Color(140, 30, 20)
     };
 
+    /** Used only to size the panel before the first snapshot arrives; painting always uses the live snapshot's dimensions. */
+    private static final int DEFAULT_CELL_SIZE = 14;
+
+    private final int boardWidth;
+    private final int boardHeight;
     private GameSnapshot snapshot;
+
+    BoardPanel(int boardWidth, int boardHeight) {
+        this.boardWidth = boardWidth;
+        this.boardHeight = boardHeight;
+    }
 
     /** Must be called on the EDT; the caller owns thread marshalling. */
     void setSnapshot(GameSnapshot snapshot) {
         this.snapshot = snapshot;
         repaint();
+    }
+
+    /**
+     * Reports a size derived from the actual board dimensions instead of a
+     * guessed pixel constant, so the window can be sized with pack() and
+     * nothing ends up clipped regardless of board size or platform fonts.
+     */
+    @Override
+    public Dimension getPreferredSize() {
+        return new Dimension(boardWidth * DEFAULT_CELL_SIZE, boardHeight * DEFAULT_CELL_SIZE);
     }
 
     @Override
