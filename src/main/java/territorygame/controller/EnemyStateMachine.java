@@ -17,9 +17,13 @@ import java.util.Random;
  * Framework code: the standard opponent used for assessment runs. Not part
  * of the candidate-facing surface.
  *
- * <p>Three states, organized by risk posture and picked fresh every turn
+ * <p>Five states, organized by risk posture and picked fresh every turn
  * (highest priority first):
  * <ul>
+ *   <li>{@code DEFENSIVE} — our owned territory just shrank since last
+ *       turn, meaning an opponent capture is in progress or just landed.
+ *       Chase their visible trail for a kill if we can see one (the surest
+ *       way to stop it cold); otherwise fall back to heading home.
  *   <li>{@code RECEDING} — safe. Our trail is long, we're low enough on
  *       turns that pushing further risks not making it back, the opponent
  *       is visible and close while we're exposed, or we're already ahead
@@ -29,23 +33,22 @@ import java.util.Random;
  *       visible and we're not currently in danger; go take it. Crossing
  *       their trail kills them; cutting a loop through their territory
  *       steals it on capture.
- *   <li>{@code WANDERING} — the default. Explore toward open space, but
- *       never deterministically: ties among comparably good directions are
- *       broken at random. On top of that, every turn independently has a
- *       small chance of forcing a few turns of {@code WANDERING} regardless
- *       of what else is going on.
+ *   <li>{@code EXPANDING} — the default. Deterministically push toward
+ *       whichever safe direction opens onto the most free space.
+ *   <li>{@code WANDERING} — a rare, single-turn detour: pick at random
+ *       among directions whose open-space score is merely close to the
+ *       best, instead of the single best one. Never fires two turns in a
+ *       row, so it's a brief nudge, not a resting state.
  * </ul>
  *
- * <p>Earlier versions of this bot got stuck in short back-and-forth loops,
- * and a first fix (detecting an exact repeat in our own last few positions)
- * only covered loops of one particular length. The deeper problem is that
- * two instances of the same deterministic logic playing each other can
- * settle into a stable cycle that isn't a repeat of either agent's own
- * positions at all — each one's "best" move depends on the other's live
- * position. Rather than detect more and more cycle shapes, {@code
- * WANDERING} is simply never fully deterministic, and the random trigger
- * guarantees the whole match periodically gets nudged regardless of
- * whether a cycle would otherwise have formed.
+ * <p>Earlier versions of this bot got stuck in short back-and-forth loops.
+ * The deeper problem is that two instances of the same deterministic logic
+ * playing each other can settle into a stable cycle that isn't a repeat of
+ * either agent's own positions at all — each one's "best" move depends on
+ * the other's live position. Rather than detect specific cycle shapes,
+ * {@code WANDERING} periodically (and briefly) makes the whole match
+ * non-deterministic, which is enough to knock either agent off any cycle
+ * regardless of its length.
  */
 public final class EnemyStateMachine implements AgentController {
 
@@ -57,21 +60,21 @@ public final class EnemyStateMachine implements AgentController {
     private static final int CONSOLIDATE_TURNS_THRESHOLD = 30;
     /** How far below the best open-space score a direction can be and still be considered "good enough" to wander into. */
     private static final int WANDER_OPENNESS_TOLERANCE = 1;
-    /** Independent per-turn chance of forcing a few turns of WANDERING, regardless of what else is going on. */
+    /** Per-turn chance of a single WANDERING detour, skipped entirely when we just wandered last turn. */
     private static final double RANDOM_WANDER_CHANCE = 0.01;
-    private static final int RANDOM_WANDER_DURATION = 2;
 
     private enum State {
-        RECEDING, AGGRESSIVE, WANDERING
+        DEFENSIVE, RECEDING, AGGRESSIVE, EXPANDING, WANDERING
     }
 
     private final Random random = new Random();
-    private int randomWanderTurnsRemaining;
-    private State currentState = State.WANDERING;
+    private State currentState = State.EXPANDING;
+    private int previousOwnedTerritoryCount;
 
     @Override
     public void takeTurn(GameApi game) {
-        currentState = decideState(game);
+        State previousState = currentState;
+        currentState = decideState(game, previousState);
         Direction direction = chooseDirection(game, currentState);
         game.move(direction);
     }
@@ -83,14 +86,11 @@ public final class EnemyStateMachine implements AgentController {
 
     // ---- State selection ----------------------------------------------
 
-    private State decideState(GameApi game) {
-        if (randomWanderTurnsRemaining > 0) {
-            randomWanderTurnsRemaining--;
-            return State.WANDERING;
-        }
-        if (random.nextDouble() < RANDOM_WANDER_CHANCE) {
-            randomWanderTurnsRemaining = RANDOM_WANDER_DURATION - 1;
-            return State.WANDERING;
+    private State decideState(GameApi game, State previousState) {
+        boolean territoryShrank = game.getOwnedTerritoryCellCount() < previousOwnedTerritoryCount;
+        previousOwnedTerritoryCount = game.getOwnedTerritoryCellCount();
+        if (territoryShrank) {
+            return State.DEFENSIVE;
         }
         if (shouldRecede(game)) {
             return State.RECEDING;
@@ -98,7 +98,10 @@ public final class EnemyStateMachine implements AgentController {
         if (shouldBeAggressive(game)) {
             return State.AGGRESSIVE;
         }
-        return State.WANDERING;
+        if (previousState != State.WANDERING && random.nextDouble() < RANDOM_WANDER_CHANCE) {
+            return State.WANDERING;
+        }
+        return State.EXPANDING;
     }
 
     private boolean shouldRecede(GameApi game) {
@@ -138,10 +141,26 @@ public final class EnemyStateMachine implements AgentController {
 
     private Direction chooseDirection(GameApi game, State state) {
         return switch (state) {
+            case DEFENSIVE -> pickDefensive(game);
             case RECEDING -> pickReceding(game);
             case AGGRESSIVE -> pickAggressive(game);
+            case EXPANDING -> pickExpanding(game);
             case WANDERING -> pickWandering(game);
         };
+    }
+
+    /** Chases the opponent's visible trail to stop an in-progress capture cold; otherwise falls back to heading home. */
+    private Direction pickDefensive(GameApi game) {
+        Optional<GridPosition> opponentTrail = nearestVisible(game, CellViewType.OPPONENT_TRAIL);
+        if (opponentTrail.isPresent()) {
+            return chooseBest(huntableDirections(game), distanceTo(game, opponentTrail.get()));
+        }
+        return pickReceding(game);
+    }
+
+    /** Deterministically pushes toward whichever safe direction opens onto the most free space. */
+    private Direction pickExpanding(GameApi game) {
+        return chooseBest(safeDirections(game), Comparator.comparingInt((Direction d) -> openNeighborCount(game, d)).reversed());
     }
 
     /** Stays inside our own territory if any safe move lands there (zero trail risk); otherwise heads for the nearest of it. */
