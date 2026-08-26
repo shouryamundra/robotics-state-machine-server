@@ -1,7 +1,9 @@
 # Candidate Guide
 
-You write one file: `src/main/java/candidate/CandidateController.java`.
-That's it — nothing else in this codebase needs to change.
+You write `src/main/java/candidate/CandidateController.java` — that's the
+one file the framework looks for. Want to split your logic across more
+classes? Go ahead: add as many files as you like inside
+`src/main/java/candidate/`. Nothing outside that folder needs to change.
 
 ## The rules
 
@@ -18,15 +20,14 @@ That's it — nothing else in this codebase needs to change.
 
 ## `AgentController`
 
-This is the interface `CandidateController` implements: one method to
-write, one you can ignore.
+This is the interface `CandidateController` implements. 
 
 ### takeTurn(game)
 ```
 void takeTurn(GameApi game)
 ```
 Put your decision-making here. You never call this method yourself — the
-framework calls it for you, once whenever it's your turn.
+framework calls it for you, whenever it's your turn.
 
 `game` (a `GameApi`, see below) is your window into the current turn: where
 you are, what you can see, how the match stands. Read what you need from
