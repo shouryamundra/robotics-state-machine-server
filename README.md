@@ -10,6 +10,8 @@ inside it). Crossing your own trail kills you; crossing an opponent's trail
 kills them. Whoever holds more territory when both players run out of
 turns wins.
 
+![Territory Capture gameplay](src/main/resources/GamePlayScreenShot.png)
+
 ## Requirements
 
 - Java 21 (JDK)

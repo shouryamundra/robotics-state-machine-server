@@ -1,0 +1,11 @@
+# Normalize everything to LF in the repo; Git converts on checkout per
+# platform based on core.autocrlf, so this only pins what's actually stored.
+* text=auto eol=lf
+
+# Windows batch script needs CRLF to run correctly.
+*.cmd text eol=crlf
+
+# Shell script needs LF; a CRLF shebang line fails on Linux/macOS/WSL.
+mvnw text eol=lf
+
+*.png binary
