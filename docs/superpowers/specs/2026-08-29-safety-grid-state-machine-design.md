@@ -49,7 +49,7 @@ Reaching territory closes the loop (`MoveResult.CAPTURED`); the trail resets, an
 
 ### Degenerate case (accepted, not specially handled)
 
-If the configured grid size is so small that not even one OUT step is allowed, the bot never leaves territory and just reshuffles along its own edge instead of expanding. Not worth extra machinery to special-case in a from-scratch teaching example.
+The box check is vacuous with an empty trail, so the first OUT step is always taken regardless of grid size. If the configured grid is so small that a second step would already break it (e.g. size 1 or 3), the bot turns almost immediately and captures a tiny sliver each expedition instead of a useful rectangle. Not worth extra machinery to special-case in a from-scratch teaching example.
 
 ## Fields
 
