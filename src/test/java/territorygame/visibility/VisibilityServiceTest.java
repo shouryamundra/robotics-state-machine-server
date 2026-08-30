@@ -2,8 +2,9 @@ package territorygame.visibility;
 
 import org.junit.jupiter.api.Test;
 import territorygame.TestGames;
-import territorygame.api.CellViewType;
 import territorygame.api.GridPosition;
+import territorygame.api.OccupantView;
+import territorygame.api.TerritoryView;
 import territorygame.api.VisibleCell;
 import territorygame.domain.GameState;
 import territorygame.domain.PlayerId;
@@ -65,8 +66,6 @@ class VisibilityServiceTest {
 
     @Test
     void ownershipTranslatesToSelfAndOpponentRelativeToViewer() {
-        // Territory cells distinct from either agent's current position, so
-        // the AGENT precedence rule doesn't mask the TERRITORY type being checked.
         GridPosition player0Territory = new GridPosition(4, 5);
         GridPosition player1Territory = new GridPosition(7, 6);
         GameState state = TestGames.twoPlayerState(
@@ -80,11 +79,14 @@ class VisibilityServiceTest {
         VisibleCell[][] fromPlayer0 = service.computeVisibleGrid(state, player0);
         VisibleCell[][] fromPlayer1 = service.computeVisibleGrid(state, player1);
 
-        assertEquals(CellViewType.SELF_TERRITORY, cellAt(fromPlayer0, player0Territory).type());
-        assertEquals(CellViewType.OPPONENT_TERRITORY, cellAt(fromPlayer0, player1Territory).type());
-        // Same cells, viewed by the other player, flip labels.
-        assertEquals(CellViewType.OPPONENT_TERRITORY, cellAt(fromPlayer1, player0Territory).type());
-        assertEquals(CellViewType.SELF_TERRITORY, cellAt(fromPlayer1, player1Territory).type());
+        assertEquals(OccupantView.EMPTY, cellAt(fromPlayer0, player0Territory).occupant());
+        assertEquals(TerritoryView.SELF, cellAt(fromPlayer0, player0Territory).territory());
+        assertEquals(OccupantView.EMPTY, cellAt(fromPlayer0, player1Territory).occupant());
+        assertEquals(TerritoryView.OPPONENT, cellAt(fromPlayer0, player1Territory).territory());
+        assertEquals(OccupantView.EMPTY, cellAt(fromPlayer1, player0Territory).occupant());
+        assertEquals(TerritoryView.OPPONENT, cellAt(fromPlayer1, player0Territory).territory());
+        assertEquals(OccupantView.EMPTY, cellAt(fromPlayer1, player1Territory).occupant());
+        assertEquals(TerritoryView.SELF, cellAt(fromPlayer1, player1Territory).territory());
     }
 
     @Test
@@ -99,32 +101,50 @@ class VisibilityServiceTest {
 
         VisibleCell[][] grid = service.computeVisibleGrid(state, player0);
 
-        assertEquals(CellViewType.SELF_AGENT, cellAt(grid, new GridPosition(5, 5)).type());
-        assertEquals(CellViewType.OPPONENT_AGENT, cellAt(grid, new GridPosition(6, 5)).type());
+        assertEquals(OccupantView.SELF_AGENT, cellAt(grid, new GridPosition(5, 5)).occupant());
+        assertEquals(OccupantView.OPPONENT_AGENT, cellAt(grid, new GridPosition(6, 5)).occupant());
     }
 
     @Test
-    void precedenceIsAgentThenTrailThenTerritoryThenFree() {
+    void trailOccupantDoesNotHideTerritory() {
         GameState state = TestGames.twoPlayerState(
                 10, 10,
                 new GridPosition(5, 5), List.of(new GridPosition(5, 5)),
                 new GridPosition(0, 0), List.of(),
                 10
         );
-        // A cell that is simultaneously player0's territory and player0's trail:
-        // trail wins.
         GridPosition trailOverTerritory = new GridPosition(4, 5);
         state.getBoard().setTerritoryOwner(trailOverTerritory, player0);
         state.getBoard().setTrailOwner(trailOverTerritory, player0);
 
         VisibilityService service = new VisibilityService(9);
-        VisibleCell[][] grid = service.computeVisibleGrid(state, player0);
+        VisibleCell cell = cellAt(service.computeVisibleGrid(state, player0), trailOverTerritory);
 
-        assertEquals(CellViewType.SELF_TRAIL, cellAt(grid, trailOverTerritory).type());
+        assertEquals(OccupantView.SELF_TRAIL, cell.occupant());
+        assertEquals(TerritoryView.SELF, cell.territory());
     }
 
     @Test
-    void unoccupiedUnownedCellIsFree() {
+    void opponentTrailOnViewerLandReportsBothLayers() {
+        GameState state = TestGames.twoPlayerState(
+                10, 10,
+                new GridPosition(5, 5), List.of(new GridPosition(5, 5)),
+                new GridPosition(0, 0), List.of(),
+                10
+        );
+        GridPosition cut = new GridPosition(4, 5);
+        state.getBoard().setTerritoryOwner(cut, player0);
+        state.getBoard().setTrailOwner(cut, player1);
+
+        VisibilityService service = new VisibilityService(9);
+        VisibleCell cell = cellAt(service.computeVisibleGrid(state, player0), cut);
+
+        assertEquals(OccupantView.OPPONENT_TRAIL, cell.occupant());
+        assertEquals(TerritoryView.SELF, cell.territory());
+    }
+
+    @Test
+    void unoccupiedUnownedCellIsEmptyAndUnowned() {
         GameState state = TestGames.twoPlayerState(
                 10, 10,
                 new GridPosition(5, 5), List.of(new GridPosition(5, 5)),
@@ -132,9 +152,9 @@ class VisibilityServiceTest {
                 10
         );
         VisibilityService service = new VisibilityService(9);
+        VisibleCell cell = cellAt(service.computeVisibleGrid(state, player0), new GridPosition(6, 5));
 
-        VisibleCell[][] grid = service.computeVisibleGrid(state, player0);
-
-        assertEquals(CellViewType.FREE, cellAt(grid, new GridPosition(6, 5)).type());
+        assertEquals(OccupantView.EMPTY, cell.occupant());
+        assertEquals(TerritoryView.UNOWNED, cell.territory());
     }
 }

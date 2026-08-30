@@ -1,11 +1,12 @@
 package territorygame.helpers;
 
 import org.junit.jupiter.api.Test;
-import territorygame.api.CellViewType;
 import territorygame.api.Direction;
 import territorygame.api.GameApi;
 import territorygame.api.GridPosition;
 import territorygame.api.MoveResult;
+import territorygame.api.OccupantView;
+import territorygame.api.TerritoryView;
 import territorygame.api.VisibleCell;
 
 import java.util.List;
@@ -63,7 +64,7 @@ class MovementUtilsTest {
         GridPosition position = new GridPosition(2, 2);
         GridPosition opponentAt = new GridPosition(3, 2);
         VisibleCell[][] grid = {{
-                new VisibleCell(opponentAt, CellViewType.OPPONENT_AGENT)
+                new VisibleCell(opponentAt, OccupantView.OPPONENT_AGENT, TerritoryView.UNOWNED)
         }};
         StubGameApi game = new StubGameApi(position, 5, 5, grid);
 
@@ -75,7 +76,7 @@ class MovementUtilsTest {
         GridPosition position = new GridPosition(2, 2);
         GridPosition destination = new GridPosition(3, 2);
         VisibleCell[][] grid = {{
-                new VisibleCell(destination, CellViewType.FREE)
+                new VisibleCell(destination, OccupantView.EMPTY, TerritoryView.UNOWNED)
         }};
         StubGameApi game = new StubGameApi(position, 5, 5, grid);
 
@@ -85,17 +86,18 @@ class MovementUtilsTest {
     @Test
     void findCellReturnsTheCellAtAMatchingPosition() {
         GridPosition target = new GridPosition(3, 2);
-        VisibleCell[][] grid = {{new VisibleCell(target, CellViewType.OPPONENT_TERRITORY)}};
+        VisibleCell[][] grid = {{new VisibleCell(target, OccupantView.EMPTY, TerritoryView.OPPONENT)}};
 
         Optional<VisibleCell> found = MovementUtils.findCell(grid, target);
 
         assertTrue(found.isPresent());
-        assertEquals(CellViewType.OPPONENT_TERRITORY, found.get().type());
+        assertEquals(OccupantView.EMPTY, found.get().occupant());
+        assertEquals(TerritoryView.OPPONENT, found.get().territory());
     }
 
     @Test
     void findCellReturnsEmptyWhenPositionIsNotInTheGrid() {
-        VisibleCell[][] grid = {{new VisibleCell(new GridPosition(3, 2), CellViewType.FREE)}};
+        VisibleCell[][] grid = {{new VisibleCell(new GridPosition(3, 2), OccupantView.EMPTY, TerritoryView.UNOWNED)}};
 
         assertTrue(MovementUtils.findCell(grid, new GridPosition(9, 9)).isEmpty());
     }
@@ -106,8 +108,10 @@ class MovementUtilsTest {
         GridPosition east = new GridPosition(1, 0);
         GridPosition south = new GridPosition(0, 1);
         VisibleCell[][] grid = {
-                {new VisibleCell(position, CellViewType.SELF_AGENT), new VisibleCell(east, CellViewType.OPPONENT_AGENT)},
-                {new VisibleCell(south, CellViewType.FREE), new VisibleCell(new GridPosition(1, 1), CellViewType.FREE)}
+                {new VisibleCell(position, OccupantView.SELF_AGENT, TerritoryView.UNOWNED),
+                        new VisibleCell(east, OccupantView.OPPONENT_AGENT, TerritoryView.UNOWNED)},
+                {new VisibleCell(south, OccupantView.EMPTY, TerritoryView.UNOWNED),
+                        new VisibleCell(new GridPosition(1, 1), OccupantView.EMPTY, TerritoryView.UNOWNED)}
         };
         StubGameApi game = new StubGameApi(position, 5, 5, grid);
 

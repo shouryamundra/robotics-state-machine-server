@@ -1,7 +1,8 @@
 package territorygame.visibility;
 
-import territorygame.api.CellViewType;
 import territorygame.api.GridPosition;
+import territorygame.api.OccupantView;
+import territorygame.api.TerritoryView;
 import territorygame.api.VisibleCell;
 import territorygame.domain.Agent;
 import territorygame.domain.Board;
@@ -12,7 +13,7 @@ import territorygame.domain.PlayerId;
 /**
  * Produces candidate-facing observations from authoritative state, owning
  * the translation from internal player identities to relative
- * {@code SELF_*}/{@code OPPONENT_*} types.
+ * {@code SELF}/{@code OPPONENT} occupant and territory views.
  */
 public final class VisibilityService {
 
@@ -42,14 +43,16 @@ public final class VisibilityService {
         for (int y = minY; y <= maxY; y++) {
             for (int x = minX; x <= maxX; x++) {
                 GridPosition position = new GridPosition(x, y);
-                CellViewType type = classify(board, position, viewer.getAgent(), opponent.getAgent(), viewerId, opponent.getId());
-                grid[y - minY][x - minX] = new VisibleCell(position, type);
+                grid[y - minY][x - minX] = new VisibleCell(
+                        position,
+                        classifyOccupant(board, position, viewer.getAgent(), opponent.getAgent(), viewerId, opponent.getId()),
+                        classifyTerritory(board, position, viewerId, opponent.getId()));
             }
         }
         return grid;
     }
 
-    private CellViewType classify(
+    private OccupantView classifyOccupant(
             Board board,
             GridPosition position,
             Agent viewerAgent,
@@ -58,28 +61,34 @@ public final class VisibilityService {
             PlayerId opponentId
     ) {
         if (position.equals(viewerAgent.getPosition())) {
-            return CellViewType.SELF_AGENT;
+            return OccupantView.SELF_AGENT;
         }
         if (position.equals(opponentAgent.getPosition())) {
-            return CellViewType.OPPONENT_AGENT;
+            return OccupantView.OPPONENT_AGENT;
         }
-
         PlayerId trailOwner = board.trailOwnerAt(position);
         if (viewerId.equals(trailOwner)) {
-            return CellViewType.SELF_TRAIL;
+            return OccupantView.SELF_TRAIL;
         }
         if (opponentId.equals(trailOwner)) {
-            return CellViewType.OPPONENT_TRAIL;
+            return OccupantView.OPPONENT_TRAIL;
         }
+        return OccupantView.EMPTY;
+    }
 
+    private TerritoryView classifyTerritory(
+            Board board,
+            GridPosition position,
+            PlayerId viewerId,
+            PlayerId opponentId
+    ) {
         PlayerId territoryOwner = board.territoryOwnerAt(position);
         if (viewerId.equals(territoryOwner)) {
-            return CellViewType.SELF_TERRITORY;
+            return TerritoryView.SELF;
         }
         if (opponentId.equals(territoryOwner)) {
-            return CellViewType.OPPONENT_TERRITORY;
+            return TerritoryView.OPPONENT;
         }
-
-        return CellViewType.FREE;
+        return TerritoryView.UNOWNED;
     }
 }
