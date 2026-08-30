@@ -19,7 +19,7 @@ import java.util.List;
  * trail to territory and flood-filling the region it encloses. Enclosure
  * uses cardinal adjacency and a flood fill from the board edge, treating
  * the capturer's territory as the boundary; cells unreached by the fill
- * are enclosed.
+ * are enclosed. Opponent starting territory is never claimed.
  */
 public final class TerritoryResolver {
 
@@ -38,7 +38,21 @@ public final class TerritoryResolver {
             board.setTerritoryOwner(enclosedCell, capturerId);
         }
 
+        restoreOpponentStartingTerritories(state, capturerId);
+
         agent.clearTrail();
+    }
+
+    private void restoreOpponentStartingTerritories(GameState state, PlayerId capturerId) {
+        Board board = state.getBoard();
+        for (Player player : state.getPlayers()) {
+            if (player.getId().equals(capturerId)) {
+                continue;
+            }
+            for (GridPosition cell : player.getStartingTerritory()) {
+                board.setTerritoryOwner(cell, player.getId());
+            }
+        }
     }
 
     private List<GridPosition> findEnclosedCells(Board board, PlayerId capturerId) {

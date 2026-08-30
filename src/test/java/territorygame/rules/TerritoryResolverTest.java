@@ -71,6 +71,25 @@ class TerritoryResolverTest {
     }
 
     @Test
+    void captureDoesNotClaimOpponentStartingTerritory() {
+        GameState state = TestGames.twoPlayerState(
+                8, 8,
+                HOME, List.of(HOME),
+                ENCLOSED, List.of(ENCLOSED),
+                10
+        );
+        for (GridPosition cell : PERIMETER) {
+            state.getBoard().setTrailOwner(cell, capturer);
+            state.getPlayer(capturer).getAgent().appendTrail(cell);
+        }
+
+        resolver.applyCapture(state, capturer);
+
+        assertEquals(opponent, state.getBoard().territoryOwnerAt(ENCLOSED));
+        assertEquals(1, state.getBoard().territoryCount(opponent));
+    }
+
+    @Test
     void unrelatedOpponentTrailInsideTheEnclosedRegionIsUntouched() {
         GameState state = buildStateWithPendingTrail();
         state.getBoard().setTrailOwner(ENCLOSED, opponent);

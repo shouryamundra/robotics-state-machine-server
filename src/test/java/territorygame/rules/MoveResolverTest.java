@@ -242,4 +242,42 @@ class MoveResolverTest {
         assertNotEquals(moverPosition, opponentNewPosition);
         assertEquals(1, state.getKillCount(player0));
     }
+
+    @Test
+    void closingALoopOnACellThatKillsTheOpponentPreservesTheirStartingTerritory() {
+        // Player0 returns home (closing a loop) onto a cell that also has
+        // player1's trail, so both a capture and a kill resolve in one move.
+        // Player0's existing territory already rings player1's start, so the
+        // capture flood-fill would otherwise paint over the start platform
+        // that respawn just restored.
+        GridPosition p1Start = new GridPosition(4, 4);
+        List<GridPosition> p0Territory = List.of(
+                new GridPosition(1, 1),
+                new GridPosition(3, 3), new GridPosition(4, 3), new GridPosition(5, 3),
+                new GridPosition(3, 4),                         new GridPosition(5, 4),
+                new GridPosition(3, 5), new GridPosition(4, 5), new GridPosition(5, 5)
+        );
+        GameState state = TestGames.twoPlayerState(
+                8, 8,
+                new GridPosition(1, 1), p0Territory,
+                p1Start, List.of(p1Start),
+                10
+        );
+
+        state.getPlayer(player0).getAgent().setPosition(new GridPosition(1, 2));
+        state.getBoard().setTrailOwner(new GridPosition(1, 2), player0);
+        state.getPlayer(player0).getAgent().appendTrail(new GridPosition(1, 2));
+
+        state.getPlayer(player1).getAgent().setPosition(new GridPosition(1, 3));
+        state.getBoard().setTrailOwner(new GridPosition(1, 1), player1);
+        state.getPlayer(player1).getAgent().appendTrail(new GridPosition(1, 1));
+
+        MoveResult result = resolver.resolve(state, player0, Direction.NORTH);
+
+        assertEquals(MoveResult.CAPTURED, result);
+        assertEquals(1, state.getKillCount(player0));
+        assertEquals(p1Start, state.getPlayer(player1).getAgent().getPosition());
+        assertEquals(player1, state.getBoard().territoryOwnerAt(p1Start));
+        assertEquals(1, state.getBoard().territoryCount(player1));
+    }
 }
