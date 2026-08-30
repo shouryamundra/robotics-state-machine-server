@@ -70,14 +70,21 @@ public final class BoardPanel extends JPanel {
         if (snapshot == null) {
             return;
         }
-        Graphics2D g = (Graphics2D) graphics;
-        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        Graphics2D g = (Graphics2D) graphics.create();
+        try {
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
-        int cellSize = Math.max(1, Math.min(getWidth() / snapshot.width(), getHeight() / snapshot.height()));
+            int cellSize = Math.max(1, Math.min(getWidth() / snapshot.width(), getHeight() / snapshot.height()));
+            int originX = (getWidth() - cellSize * snapshot.width()) / 2;
+            int originY = (getHeight() - cellSize * snapshot.height()) / 2;
+            g.translate(originX, originY);
 
-        paintCells(g, cellSize);
-        paintAgents(g, cellSize);
-        paintVisibilityWindows(g, cellSize);
+            paintCells(g, cellSize);
+            paintAgents(g, cellSize);
+            paintVisibilityWindows(g, cellSize);
+        } finally {
+            g.dispose();
+        }
     }
 
     private void paintCells(Graphics2D g, int cellSize) {

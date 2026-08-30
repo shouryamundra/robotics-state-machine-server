@@ -16,15 +16,24 @@ import javax.swing.JComboBox;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
+import javax.swing.JScrollPane;
 import javax.swing.JSlider;
+import javax.swing.JTextArea;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 import java.awt.BorderLayout;
 import java.awt.Color;
+import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
+import java.awt.GraphicsConfiguration;
+import java.awt.GridBagConstraints;
+import java.awt.GridBagLayout;
 import java.awt.GridLayout;
+import java.awt.Insets;
+import java.awt.Rectangle;
+import java.awt.Toolkit;
 import java.util.List;
 
 /**
@@ -58,16 +67,19 @@ public final class GameWindow extends JFrame implements GameObserver {
 
         setLayout(new BorderLayout());
         add(buildTopPanel(config.autoPlayTurnDelayMillis()), BorderLayout.NORTH);
-        add(boardPanel, BorderLayout.CENTER);
-        add(buildStatusPanel(), BorderLayout.SOUTH);
+        add(wrapBoard(), BorderLayout.CENTER);
+        add(buildSidePanel(), BorderLayout.EAST);
+        add(buildStatusBar(), BorderLayout.SOUTH);
 
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        // pack() sizes the window from the components' own preferred sizes
-        // instead of a guessed pixel constant, so nothing gets clipped
-        // regardless of platform fonts or how wide the controls row ends up.
+        // pack() sizes from preferred sizes, then fitToUsableScreen() caps
+        // and centers inside the display area that excludes the menu bar
+        // and Dock, so the window never opens under them or at (0, 0).
         pack();
-        setMinimumSize(getSize());
-        setLocationRelativeTo(null);
+        fitToUsableScreen();
+        // macOS often applies the native window position only after the peer
+        // exists; re-run once shown so we don't land at the top-left.
+        SwingUtilities.invokeLater(this::fitToUsableScreen);
 
         // Triggers the first observer notification so the board paints
         // before Start/Step is ever clicked; reuses the same controller
@@ -193,22 +205,57 @@ public final class GameWindow extends JFrame implements GameObserver {
         return panel;
     }
 
-    private JPanel buildStatusPanel() {
-        JPanel panel = new JPanel(new BorderLayout());
-        panel.setBorder(BorderFactory.createEmptyBorder(10, 16, 16, 16));
+    private JPanel wrapBoard() {
+        JPanel holder = new JPanel(new BorderLayout());
+        holder.setBorder(BorderFactory.createEmptyBorder(0, 16, 0, 12));
+        holder.add(boardPanel, BorderLayout.CENTER);
+        return holder;
+    }
 
-        JPanel cards = new JPanel(new GridLayout(1, 2, 20, 0));
+    /** Player cards stacked beside the board so the window is landscape, not a tall column. */
+    private JPanel buildSidePanel() {
+        JPanel cards = new JPanel(new GridLayout(2, 1, 0, 12));
         for (PlayerCard card : playerCards) {
             cards.add(card.panel);
         }
-        panel.add(cards, BorderLayout.CENTER);
+        JPanel side = new JPanel(new BorderLayout());
+        side.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 16));
+        side.setPreferredSize(new Dimension(340, boardPanel.getPreferredSize().height));
+        side.add(cards, BorderLayout.CENTER);
+        return side;
+    }
 
+    private JPanel buildStatusBar() {
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.setBorder(BorderFactory.createEmptyBorder(8, 16, 12, 16));
         matchStatusLabel.setHorizontalAlignment(SwingConstants.CENTER);
         matchStatusLabel.setFont(matchStatusLabel.getFont().deriveFont(Font.BOLD, 13f));
-        matchStatusLabel.setBorder(BorderFactory.createEmptyBorder(10, 0, 0, 0));
-        panel.add(matchStatusLabel, BorderLayout.SOUTH);
-
+        panel.add(matchStatusLabel, BorderLayout.CENTER);
         return panel;
+    }
+
+    /**
+     * Caps the packed size to this display's usable area (menu bar and Dock
+     * excluded) and centers the window in that rectangle. The board already
+     * scales its cell size to whatever space it is given.
+     */
+    private void fitToUsableScreen() {
+        GraphicsConfiguration gc = getGraphicsConfiguration();
+        Rectangle screen = gc.getBounds();
+        Insets insets = Toolkit.getDefaultToolkit().getScreenInsets(gc);
+        int usableX = screen.x + insets.left + 8;
+        int usableY = screen.y + insets.top + 8;
+        int usableW = screen.width - insets.left - insets.right - 16;
+        int usableH = screen.height - insets.top - insets.bottom - 16;
+
+        int width = Math.min(getWidth(), usableW);
+        int height = Math.min(getHeight(), usableH);
+        setBounds(
+                usableX + (usableW - width) / 2,
+                usableY + (usableH - height) / 2,
+                width,
+                height);
+        setMinimumSize(new Dimension(Math.min(560, width), Math.min(400, height)));
     }
 
     @Override
@@ -256,7 +303,7 @@ public final class GameWindow extends JFrame implements GameObserver {
         return "Player " + (winnerIndex + 1) + " wins";
     }
 
-    /** One player's status card: colored swatch plus score/territory/kills/turns. */
+    /** One player's status card: stats on top, wrapping state log filling the rest. */
     private static final class PlayerCard {
         private final JPanel panel;
         private final javax.swing.border.TitledBorder border;
@@ -265,18 +312,19 @@ public final class GameWindow extends JFrame implements GameObserver {
         private final JLabel killsLabel = new JLabel();
         private final JLabel deathsLabel = new JLabel();
         private final JLabel turnsLabel = new JLabel();
-        private final JLabel stateLabel = new JLabel();
+        private final JTextArea stateArea = new JTextArea();
 
         PlayerCard(int index) {
             border = BorderFactory.createTitledBorder("Player " + (index + 1));
             border.setTitleFont(border.getTitleFont() != null
                     ? border.getTitleFont().deriveFont(Font.BOLD)
                     : new JLabel().getFont().deriveFont(Font.BOLD));
-            panel = new JPanel(new GridLayout(6, 1, 0, 4));
+            panel = new JPanel(new GridBagLayout());
             panel.setBorder(BorderFactory.createCompoundBorder(
                     border, BorderFactory.createEmptyBorder(6, 10, 10, 10)));
 
             JPanel swatchRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
+            swatchRow.setAlignmentX(Component.LEFT_ALIGNMENT);
             JPanel swatch = new JPanel();
             swatch.setPreferredSize(new Dimension(13, 13));
             swatch.setBackground(BoardPanel.AGENT_COLORS[index % BoardPanel.AGENT_COLORS.length]);
@@ -284,12 +332,55 @@ public final class GameWindow extends JFrame implements GameObserver {
             swatchRow.add(swatch);
             swatchRow.add(scoreLabel);
 
-            panel.add(swatchRow);
-            panel.add(territoryLabel);
-            panel.add(killsLabel);
-            panel.add(deathsLabel);
-            panel.add(turnsLabel);
-            panel.add(stateLabel);
+            JPanel stats = new JPanel();
+            stats.setLayout(new BoxLayout(stats, BoxLayout.Y_AXIS));
+            stats.add(swatchRow);
+            stats.add(Box.createVerticalStrut(4));
+            for (JLabel label : new JLabel[] {territoryLabel, killsLabel, deathsLabel, turnsLabel}) {
+                label.setAlignmentX(Component.LEFT_ALIGNMENT);
+                stats.add(label);
+            }
+
+            Color well = new Color(250, 250, 250);
+            stateArea.setLineWrap(true);
+            stateArea.setWrapStyleWord(true);
+            stateArea.setEditable(false);
+            stateArea.setOpaque(true);
+            stateArea.setBackground(well);
+            stateArea.setRows(8);
+            stateArea.setColumns(24);
+            stateArea.setFont(stateArea.getFont().deriveFont(12f));
+            stateArea.setBorder(BorderFactory.createEmptyBorder(6, 8, 6, 8));
+            stateArea.getCaret().setVisible(false);
+
+            JScrollPane stateScroll = new JScrollPane(stateArea);
+            stateScroll.setBorder(BorderFactory.createLineBorder(new Color(210, 210, 210)));
+            stateScroll.getViewport().setBackground(well);
+            stateScroll.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+            stateScroll.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
+
+            JPanel stateBlock = new JPanel(new BorderLayout(0, 4));
+            JLabel stateHeader = new JLabel("State:");
+            stateHeader.setFont(stateHeader.getFont().deriveFont(Font.BOLD));
+            stateBlock.add(stateHeader, BorderLayout.NORTH);
+            stateBlock.add(stateScroll, BorderLayout.CENTER);
+
+            GridBagConstraints statsConstraints = new GridBagConstraints();
+            statsConstraints.gridx = 0;
+            statsConstraints.gridy = 0;
+            statsConstraints.weightx = 1;
+            statsConstraints.fill = GridBagConstraints.HORIZONTAL;
+            statsConstraints.anchor = GridBagConstraints.NORTHWEST;
+            statsConstraints.insets = new Insets(0, 0, 8, 0);
+            panel.add(stats, statsConstraints);
+
+            GridBagConstraints stateConstraints = new GridBagConstraints();
+            stateConstraints.gridx = 0;
+            stateConstraints.gridy = 1;
+            stateConstraints.weightx = 1;
+            stateConstraints.weighty = 1;
+            stateConstraints.fill = GridBagConstraints.BOTH;
+            panel.add(stateBlock, stateConstraints);
         }
 
         void update(GameSnapshot.PlayerSnapshot player, boolean active) {
@@ -300,7 +391,10 @@ public final class GameWindow extends JFrame implements GameObserver {
             killsLabel.setText("Kills: " + player.killCount());
             deathsLabel.setText("Deaths: " + player.deathCount());
             turnsLabel.setText("Turns left: " + player.remainingTurns());
-            stateLabel.setText(player.debugState() == null ? " " : "State: " + player.debugState());
+            String state = player.debugState();
+            stateArea.setText(state == null || state.isBlank() ? "" : state);
+            stateArea.setCaretPosition(0);
+            stateArea.getCaret().setVisible(false);
         }
     }
 }
