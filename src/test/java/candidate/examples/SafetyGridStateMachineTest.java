@@ -8,6 +8,7 @@ import territorygame.domain.GameConfig;
 import territorygame.engine.GameEngine;
 import territorygame.engine.GameSnapshot;
 
+import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -119,6 +120,24 @@ class SafetyGridStateMachineTest {
     void enemyHalfDirectionPointsAwayFromRespawnSide() {
         assertEquals(Direction.EAST, SafetyGridStateMachine.enemyHalfDirection(new GridPosition(4, 25), 50));
         assertEquals(Direction.WEST, SafetyGridStateMachine.enemyHalfDirection(new GridPosition(45, 25), 50));
+    }
+
+    @Test
+    void preferContinuingRanksThePreviousDirectionAheadOfEveryOther() {
+        Comparator<Direction> ranking = SafetyGridStateMachine.preferContinuing(Direction.WEST);
+
+        Direction winner = List.of(Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST).stream()
+                .min(ranking)
+                .orElseThrow();
+
+        assertEquals(Direction.WEST, winner);
+    }
+
+    @Test
+    void preferContinuingTreatsAllOtherDirectionsAsEqual() {
+        Comparator<Direction> ranking = SafetyGridStateMachine.preferContinuing(Direction.WEST);
+
+        assertEquals(0, ranking.compare(Direction.NORTH, Direction.EAST));
     }
 
     @Test

@@ -10,9 +10,13 @@ import territorygame.api.VisibleCell;
 import territorygame.helpers.MovementUtils;
 import territorygame.helpers.ObservedBoard;
 
+import java.util.ArrayDeque;
 import java.util.Comparator;
+import java.util.Deque;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * A cautious, methodical reference strategy: unlike {@code BasicStateMachine}
@@ -27,8 +31,12 @@ public final class SafetyGridStateMachine implements AgentController {
 
     private static final int AWAY_GRID_SIZE = 5;
     private static final int HOME_GRID_SIZE = 9;
-    private static final double TERRITORY_VISIBLE_THRESHOLD = 0.90;
-    private static final int VERTICAL_WEIGHT = 2;
+    private static final double TERRITORY_VISIBLE_ENTER_THRESHOLD = 0.90;
+    private static final double TERRITORY_VISIBLE_EXIT_THRESHOLD = 0.75;
+    private static final double VERTICAL_WEIGHT = 1.5;
+    /** Keeps treating the opponent as a threat for this many turns after we last actually saw them, so a
+     *  single frame of them stepping out of our window doesn't cause an immediate dart-back-out. */
+    private static final int AVOID_COOLDOWN_TURNS = 3;
 
     private enum Phase {
         ATTACK, AVOID, REPOSITION, OUT, ACROSS, BACK
@@ -39,6 +47,11 @@ public final class SafetyGridStateMachine implements AgentController {
     private int stepsOut;
     private Direction acrossDirection;
     private ObservedBoard observedBoard;
+    private GridPosition lastKnownOpponentPosition;
+    private int turnsSinceOpponentSeen = Integer.MAX_VALUE;
+    private Direction lastDirection;
+    private GridPosition repositionTarget;
+    private boolean repositioning;
 
     @Override
     public void takeTurn(GameApi game) {
@@ -47,26 +60,53 @@ public final class SafetyGridStateMachine implements AgentController {
         }
         observedBoard.update(game.getVisibleGrid());
 
+        Optional<GridPosition> opponentNow = findOpponentPosition(game);
+        if (opponentNow.isPresent()) {
+            lastKnownOpponentPosition = opponentNow.get();
+            turnsSinceOpponentSeen = 0;
+        } else if (turnsSinceOpponentSeen < Integer.MAX_VALUE) {
+            turnsSinceOpponentSeen++;
+        }
+        boolean opponentThreat = turnsSinceOpponentSeen < AVOID_COOLDOWN_TURNS;
+
         Optional<GridPosition> intrusion = findOpponentTrailOnOurTerritory(game);
         Direction direction;
         if (intrusion.isPresent()) {
             phase = Phase.ATTACK;
             direction = pickAttack(game, intrusion.get());
-        } else if (isOpponentVisible(game)) {
+        } else if (opponentThreat) {
             phase = Phase.AVOID;
             direction = pickAvoid(game);
-        } else if (game.getActiveTrail().isEmpty() && visibleTerritoryFraction(game) >= TERRITORY_VISIBLE_THRESHOLD) {
-            phase = Phase.REPOSITION;
-            direction = pickReposition(game);
+        } else if (game.getActiveTrail().isEmpty()) {
+            // Hysteresis, same idea as AVOID_COOLDOWN_TURNS above: entering REPOSITION needs a strong
+            // 90%-visible-territory signal, but once in it we only leave once that drops further, below
+            // 75%. Without a band here, standing near a board edge (where the visible window itself
+            // shrinks/grows by a column as we take one step) can flip the raw fraction across a single
+            // threshold every turn and thrash between REPOSITION and a fresh expedition forever.
+            double territoryFraction = visibleTerritoryFraction(game);
+            double activeThreshold = repositioning ? TERRITORY_VISIBLE_EXIT_THRESHOLD : TERRITORY_VISIBLE_ENTER_THRESHOLD;
+            repositioning = territoryFraction >= activeThreshold;
+            if (repositioning) {
+                phase = Phase.REPOSITION;
+                direction = pickReposition(game);
+            } else {
+                direction = pickExpedition(game);
+            }
         } else {
             direction = pickExpedition(game);
         }
+        lastDirection = direction;
         game.move(direction);
     }
 
     @Override
     public String getDebugState() {
-        return phase.name();
+        return phase.name()
+                + "\noutDirection: " + outDirection
+                + "\nstepsOut: " + stepsOut
+                + "\nacrossDirection: " + acrossDirection
+                + "\nturnsSinceOpponentSeen: " + turnsSinceOpponentSeen
+                + "\nrepositionTarget: " + repositionTarget;
     }
 
     // ---- ATTACK / AVOID / REPOSITION ------------------------------------
@@ -81,7 +121,9 @@ public final class SafetyGridStateMachine implements AgentController {
         if (!game.getActiveTrail().isEmpty()) {
             return pickBack(game);
         }
-        GridPosition opponentPosition = findOpponentPosition(game).orElseThrow();
+        // Use the last-known sighting, not a fresh lookup: during the cooldown window the opponent may have
+        // stepped out of view this exact turn, and kiting off a stale-but-recent position beats panicking.
+        GridPosition opponentPosition = lastKnownOpponentPosition;
         List<Direction> territoryOnly = safeDirections(game).stream()
                 .filter(direction -> isSelfTerritory(game, destination(game, direction)))
                 .toList();
@@ -90,12 +132,25 @@ public final class SafetyGridStateMachine implements AgentController {
         }
         Comparator<Direction> farthestFirst = Comparator.comparingInt(
                 (Direction direction) -> -MovementUtils.manhattanDistance(destination(game, direction), opponentPosition));
-        return chooseBest(game, territoryOnly, farthestFirst.thenComparing(mostOpenFirst(game)));
+        // preferContinuing is the *last* tie-break, not the first: it only fires once distance and openness
+        // are both exactly tied, so it can never override an actually-better escape route.
+        return chooseBest(game, territoryOnly,
+                farthestFirst.thenComparing(mostOpenFirst(game)).thenComparing(preferContinuing(lastDirection)));
     }
 
-    /** Walks toward the opponent's half, preferring moves that stay on our own territory (so no trail risk is taken). */
+    /**
+     * Walks toward the most-advanced edge of our own territory (see {@link #pickRepositionTarget}),
+     * preferring moves that stay on our own territory so no trail risk is taken. Unlike scoring raw local
+     * openness fresh every turn, this target is a fixed point in the world rather than something derived
+     * from our own current position — so it doesn't flip back and forth as our position shifts by a cell.
+     */
     private Direction pickReposition(GameApi game) {
-        Direction towardEnemy = enemyHalfDirection(game.getRespawnPosition(), game.getBoardWidth());
+        repositionTarget = pickRepositionTarget(game);
+        if (repositionTarget.equals(game.getAgentPosition())) {
+            // We're already standing on the most-advanced territory we can see — there's nowhere better
+            // to pace toward, so stop "repositioning" in place and start a fresh expedition from right here.
+            return pickExpedition(game);
+        }
         List<Direction> candidates = safeDirections(game);
         List<Direction> territoryOnly = candidates.stream()
                 .filter(direction -> isSelfTerritory(game, destination(game, direction)))
@@ -103,10 +158,93 @@ public final class SafetyGridStateMachine implements AgentController {
         if (!territoryOnly.isEmpty()) {
             candidates = territoryOnly;
         }
-        if (candidates.contains(towardEnemy)) {
-            return towardEnemy;
+        // Once we've arrived (or every candidate ties on distance), stick with whatever direction we
+        // used last turn instead of picking arbitrarily among options that are all equally close.
+        return chooseBest(game, candidates, distanceTo(game, repositionTarget).thenComparing(preferContinuing(lastDirection)));
+    }
+
+    /**
+     * A launch point for the next expedition: the most-advanced-toward-the-enemy cell of our own
+     * territory that itself borders unclaimed/opponent land, so a fresh OUT expedition can leave
+     * territory immediately once we arrive (no disagreement with {@link #pickOutDirection}'s own
+     * dead-end handling about which way is actually useful). Falls back to the single most-advanced
+     * reachable cell if no visible border tile qualifies (e.g. we can't yet see past our own territory).
+     * <p>
+     * The target must be a self-territory cell reachable via other territory cells alone — not just any
+     * empty/opponent cell, and not an island of land disconnected from where we're standing — because
+     * movement here is deliberately restricted to territory-only moves (no trail risk); picking a target
+     * we can't legally walk to would mean approaching its border forever without ever reaching it.
+     */
+    private GridPosition pickRepositionTarget(GameApi game) {
+        Direction towardEnemy = enemyHalfDirection(game.getRespawnPosition(), game.getBoardWidth());
+        GridPosition from = game.getAgentPosition();
+        Set<GridPosition> visibleSelfTerritory = new HashSet<>();
+        for (VisibleCell[] row : game.getVisibleGrid()) {
+            for (VisibleCell cell : row) {
+                if (cell.territory() == TerritoryView.SELF) {
+                    visibleSelfTerritory.add(cell.position());
+                }
+            }
         }
-        return chooseBest(game, candidates, mostOpenFirst(game));
+        Set<GridPosition> reachable = floodFillReachable(from, visibleSelfTerritory);
+
+        GridPosition bestBorder = null;
+        int bestBorderAdvancement = Integer.MIN_VALUE;
+        GridPosition bestAny = from;
+        int bestAnyAdvancement = advancementToward(from, towardEnemy);
+        for (GridPosition position : reachable) {
+            int advancement = advancementToward(position, towardEnemy);
+            if (advancement > bestAnyAdvancement) {
+                bestAnyAdvancement = advancement;
+                bestAny = position;
+            }
+            if (advancement > bestBorderAdvancement && bordersNonSelfTerritory(game, position)) {
+                bestBorderAdvancement = advancement;
+                bestBorder = position;
+            }
+        }
+        return bestBorder != null ? bestBorder : bestAny;
+    }
+
+    private boolean bordersNonSelfTerritory(GameApi game, GridPosition position) {
+        for (Direction direction : Direction.values()) {
+            GridPosition neighbor = MovementUtils.nextPosition(position, direction);
+            boolean nonSelf = MovementUtils.findCell(game.getVisibleGrid(), neighbor)
+                    .map(cell -> cell.territory() != TerritoryView.SELF)
+                    .orElse(false);
+            if (nonSelf) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Every cell in {@code allowed} reachable from {@code start} by taking single steps through {@code allowed}. */
+    private static Set<GridPosition> floodFillReachable(GridPosition start, Set<GridPosition> allowed) {
+        Set<GridPosition> reachable = new HashSet<>();
+        Deque<GridPosition> frontier = new ArrayDeque<>();
+        reachable.add(start);
+        frontier.add(start);
+        while (!frontier.isEmpty()) {
+            GridPosition current = frontier.poll();
+            for (Direction direction : Direction.values()) {
+                GridPosition neighbor = MovementUtils.nextPosition(current, direction);
+                if (allowed.contains(neighbor) && reachable.add(neighbor)) {
+                    frontier.add(neighbor);
+                }
+            }
+        }
+        return reachable;
+    }
+
+    /** How far a position is toward {@code direction}, as a single comparable number — larger is farther. */
+    private static int advancementToward(GridPosition position, Direction direction) {
+        return switch (direction) {
+            case EAST -> position.x();
+            case WEST -> -position.x();
+            case SOUTH -> position.y();
+            case NORTH -> -position.y();
+        };
     }
 
     // ---- Expedition: OUT / ACROSS / BACK --------------------------------
@@ -120,7 +258,7 @@ public final class SafetyGridStateMachine implements AgentController {
     private Direction pickExpedition(GameApi game) {
         if (game.getActiveTrail().isEmpty()) {
             phase = Phase.OUT;
-            outDirection = chooseBest(game, safeDirections(game), mostOpenFirst(game));
+            outDirection = pickOutDirection(game);
             stepsOut = 0;
         }
         return switch (phase) {
@@ -130,6 +268,28 @@ public final class SafetyGridStateMachine implements AgentController {
             // phase left over from an ATTACK/AVOID detour, both just keep heading home.
             default -> pickBack(game);
         };
+    }
+
+    /**
+     * Picks which way to head out. Only considers directions that actually leave our own territory —
+     * otherwise, deep inside a big blob, we'd "expedition" in place forever: laying no trail, capturing
+     * nothing, and just walking back and forth as the local open-cell count flips by one cell each step.
+     * In the rare case every adjacent cell is already ours, head toward the nearest visible cell that
+     * isn't instead of picking blind.
+     */
+    private Direction pickOutDirection(GameApi game) {
+        List<Direction> leavingTerritory = safeDirections(game).stream()
+                .filter(direction -> !isSelfTerritory(game, destination(game, direction)))
+                .toList();
+        if (!leavingTerritory.isEmpty()) {
+            // Rank by openness first, same as the spec; only fall back to the direction we bit into last
+            // time once openness is an exact tie, so consecutive expeditions widen the same edge into a
+            // rectangle instead of alternating — without ever overriding an actually-more-open direction.
+            return chooseBest(game, leavingTerritory, mostOpenFirst(game).thenComparing(preferContinuing(outDirection)));
+        }
+        return nearestKnownNonSelfTerritory(game)
+                .map(frontier -> chooseBest(game, safeDirections(game), distanceTo(game, frontier)))
+                .orElseGet(() -> chooseBest(game, safeDirections(game), mostOpenFirst(game)));
     }
 
     private Direction pickOut(GameApi game) {
@@ -269,7 +429,7 @@ public final class SafetyGridStateMachine implements AgentController {
                 }
             }
         }
-        return isVertical(direction) ? count * VERTICAL_WEIGHT : count;
+        return isVertical(direction) ? (int) (count * VERTICAL_WEIGHT) : count;
     }
 
     private Comparator<Direction> mostOpenFirst(GameApi game) {
@@ -294,6 +454,33 @@ public final class SafetyGridStateMachine implements AgentController {
         return Optional.ofNullable(best);
     }
 
+    /**
+     * Nearest cell that isn't ours — the closest exit out of our own territory, in any direction. Searches
+     * everything we've ever observed, not just the currently-visible window: deep inside a large blob, the
+     * live window can be entirely self-territory even though we've walked past its edge before.
+     */
+    private Optional<GridPosition> nearestKnownNonSelfTerritory(GameApi game) {
+        GridPosition from = game.getAgentPosition();
+        GridPosition best = null;
+        int bestDistance = Integer.MAX_VALUE;
+        for (int y = 0; y < game.getBoardHeight(); y++) {
+            for (int x = 0; x < game.getBoardWidth(); x++) {
+                GridPosition position = new GridPosition(x, y);
+                boolean nonSelf = observedBoard.get(position)
+                        .map(cell -> cell.territory() != TerritoryView.SELF)
+                        .orElse(false);
+                if (nonSelf) {
+                    int distance = MovementUtils.manhattanDistance(from, position);
+                    if (distance < bestDistance) {
+                        bestDistance = distance;
+                        best = position;
+                    }
+                }
+            }
+        }
+        return Optional.ofNullable(best);
+    }
+
     private Optional<GridPosition> findOpponentPosition(GameApi game) {
         for (VisibleCell[] row : game.getVisibleGrid()) {
             for (VisibleCell cell : row) {
@@ -303,10 +490,6 @@ public final class SafetyGridStateMachine implements AgentController {
             }
         }
         return Optional.empty();
-    }
-
-    private boolean isOpponentVisible(GameApi game) {
-        return findOpponentPosition(game).isPresent();
     }
 
     /** Nearest visible cell where the opponent's trail is crossing land that's ours — an intrusion worth punishing. */
@@ -348,6 +531,16 @@ public final class SafetyGridStateMachine implements AgentController {
     }
 
     // ---- Pure helpers (no GameApi; unit-testable directly) ---------------
+
+    /**
+     * Tie-break helper: ranks {@code previous} ahead of every other direction, and all others as equal to
+     * each other. Meant to be chained in front of a noisy/near-tied comparator (like {@code mostOpenFirst})
+     * so that marginal score differences don't cause flip-flopping between two similarly-good directions
+     * from one turn to the next.
+     */
+    static Comparator<Direction> preferContinuing(Direction previous) {
+        return Comparator.comparingInt(direction -> direction == previous ? 0 : 1);
+    }
 
     static int chebyshevDistance(GridPosition a, GridPosition b) {
         return Math.max(Math.abs(a.x() - b.x()), Math.abs(a.y() - b.y()));
