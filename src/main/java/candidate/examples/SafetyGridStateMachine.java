@@ -8,7 +8,6 @@ import territorygame.api.OccupantView;
 import territorygame.api.TerritoryView;
 import territorygame.api.VisibleCell;
 import territorygame.helpers.MovementUtils;
-import territorygame.helpers.ObservedBoard;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -28,8 +27,7 @@ import java.util.Random;
  */
 public final class SafetyGridStateMachine implements AgentController {
 
-    private static final int AWAY_GRID_SIZE = 5;
-    private static final int HOME_GRID_SIZE = 9;
+    private static final int SAFETY_GRID_SIZE = 5;
     private static final int OUT_LOOKAHEAD = 3;
 
     private enum Phase {
@@ -41,16 +39,10 @@ public final class SafetyGridStateMachine implements AgentController {
     private int stepsOut;
     private Direction acrossDirection;
     private Direction repositionDirection;
-    private ObservedBoard observedBoard;
     private final Random random = new Random(42);
 
     @Override
     public void takeTurn(GameApi game) {
-        if (observedBoard == null) {
-            observedBoard = new ObservedBoard(game.getBoardWidth(), game.getBoardHeight());
-        }
-        observedBoard.update(game.getVisibleGrid());
-
         Optional<GridPosition> intrusion = findOpponentTrailOnOurTerritory(game);
         Direction direction;
         if (intrusion.isPresent()) {
@@ -59,9 +51,8 @@ public final class SafetyGridStateMachine implements AgentController {
         } else if (isOpponentVisible(game)) {
             phase = Phase.AVOID;
             direction = pickAvoid(game);
-        } else if (game.getActiveTrail().isEmpty() && shouldReposition(game)) {
-            phase = Phase.REPOSITION;
-            direction = pickReposition(game);
+        } else if (game.getActiveTrail().isEmpty()) {
+            direction = pickTrailFree(game);
         } else {
             direction = pickExpedition(game);
         }
@@ -97,17 +88,34 @@ public final class SafetyGridStateMachine implements AgentController {
         return chooseBest(game, territoryOnly, farthestFirst);
     }
 
-    /** Walks toward remembered open space while staying on our own territory when possible. */
-    private Direction pickReposition(GameApi game) {
-        List<Direction> candidates = safeDirections(game);
-        List<Direction> territoryOnly = candidates.stream()
+    /** Chooses a move on owned territory or starts OUT when the chosen move leaves it. */
+    private Direction pickTrailFree(GameApi game) {
+        List<Direction> safe = safeDirections(game);
+        List<Direction> territoryOnly = safe.stream()
                 .filter(direction -> isSelfTerritory(game, destination(game, direction)))
                 .toList();
+
         if (repositionDirection != null
                 && territoryOnly.contains(repositionDirection)
                 && distanceToOutsideTerritory(game, repositionDirection) <= OUT_LOOKAHEAD) {
+            phase = Phase.REPOSITION;
             return repositionDirection;
         }
+
+        List<Direction> outsideTerritory = safe.stream()
+                .filter(direction -> !territoryOnly.contains(direction))
+                .toList();
+        if (!outsideTerritory.isEmpty()) {
+            phase = Phase.OUT;
+            outDirection = outsideTerritory.contains(repositionDirection)
+                    ? repositionDirection
+                    : chooseRandom(game, preferVertical(outsideTerritory));
+            repositionDirection = null;
+            stepsOut = 1;
+            return outDirection;
+        }
+
+        phase = Phase.REPOSITION;
         List<Direction> approaches = closestApproachDirections(game, territoryOnly);
         if (!approaches.isEmpty()) {
             repositionDirection = chooseRandom(game, approaches);
@@ -116,37 +124,14 @@ public final class SafetyGridStateMachine implements AgentController {
         if (repositionDirection != null && territoryOnly.contains(repositionDirection)) {
             return repositionDirection;
         }
-        if (!territoryOnly.isEmpty()) {
-            candidates = territoryOnly;
-        }
-        repositionDirection = chooseRandom(game, candidates);
+        repositionDirection = chooseRandom(game, territoryOnly.isEmpty() ? safe : territoryOnly);
         return repositionDirection;
     }
 
     // ---- Expedition: OUT / ACROSS / BACK --------------------------------
 
-    private int gridSizeFor(GameApi game) {
-        boolean home = isOnHomeHalf(game.getAgentPosition(), game.getRespawnPosition(), game.getBoardWidth());
-        return home ? HOME_GRID_SIZE : AWAY_GRID_SIZE;
-    }
-
-    /** Starts a fresh expedition from a territory edge; otherwise continues the current phase. */
+    /** Continues whichever part of an active expedition was last selected. */
     private Direction pickExpedition(GameApi game) {
-        if (game.getActiveTrail().isEmpty()) {
-            List<Direction> outsideTerritory = safeDirections(game).stream()
-                    .filter(direction -> !isSelfTerritory(game, destination(game, direction)))
-                    .toList();
-            if (outsideTerritory.isEmpty()) {
-                phase = Phase.REPOSITION;
-                return pickReposition(game);
-            }
-            phase = Phase.OUT;
-            outDirection = outsideTerritory.contains(repositionDirection)
-                    ? repositionDirection
-                    : chooseRandom(game, preferVertical(outsideTerritory));
-            repositionDirection = null;
-            stepsOut = 0;
-        }
         return switch (phase) {
             case OUT -> pickOut(game);
             case ACROSS -> pickAcross(game);
@@ -160,7 +145,7 @@ public final class SafetyGridStateMachine implements AgentController {
         GridPosition nextHead = destination(game, outDirection);
         if (safeDirections(game).contains(outDirection)
                 && !isSelfTerritory(game, nextHead)
-                && fitsSafetyGrid(nextHead, game.getActiveTrail(), gridSizeFor(game))) {
+                && fitsSafetyGrid(nextHead, game.getActiveTrail(), SAFETY_GRID_SIZE)) {
             stepsOut++;
             return outDirection;
         }
@@ -193,25 +178,11 @@ public final class SafetyGridStateMachine implements AgentController {
             return false;
         }
         GridPosition nextHead = destination(game, acrossDirection);
-        if (!fitsSafetyGrid(nextHead, game.getActiveTrail(), gridSizeFor(game))) {
+        if (!fitsSafetyGrid(nextHead, game.getActiveTrail(), SAFETY_GRID_SIZE)) {
             return false;
         }
         GridPosition mirrored = mirrorBack(nextHead, outDirection, stepsOut);
-        return isKnownSelfTerritory(game, mirrored);
-    }
-
-    /** Like {@link #isSelfTerritory}, but falls back to {@code observedBoard} for cells outside the live window. */
-    private boolean isKnownSelfTerritory(GameApi game, GridPosition position) {
-        if (!MovementUtils.isWithinBoard(position, game.getBoardWidth(), game.getBoardHeight())) {
-            return false;
-        }
-        Optional<VisibleCell> live = MovementUtils.findCell(game.getVisibleGrid(), position);
-        if (live.isPresent()) {
-            return live.get().territory() == TerritoryView.SELF;
-        }
-        return observedBoard.get(position)
-                .map(cell -> cell.territory() == TerritoryView.SELF)
-                .orElse(false);
+        return isSelfTerritory(game, mirrored);
     }
 
     // ---- Shared BACK logic ------------------------------------------------
@@ -266,21 +237,6 @@ public final class SafetyGridStateMachine implements AgentController {
         return MovementUtils.nextPosition(game.getAgentPosition(), direction);
     }
 
-    private boolean onTerritoryEdge(GameApi game) {
-        return isTerritoryEdge(
-                game.getAgentPosition(), game.getVisibleGrid(), game.getBoardWidth(), game.getBoardHeight());
-    }
-
-    private boolean shouldReposition(GameApi game) {
-        if (!onTerritoryEdge(game)) {
-            return true;
-        }
-        return repositionDirection != null
-                && safeDirections(game).contains(repositionDirection)
-                && isSelfTerritory(game, destination(game, repositionDirection))
-                && distanceToOutsideTerritory(game, repositionDirection) <= OUT_LOOKAHEAD;
-    }
-
     private List<Direction> closestApproachDirections(GameApi game, List<Direction> candidates) {
         List<Direction> closest = new ArrayList<>();
         int closestDistance = OUT_LOOKAHEAD + 1;
@@ -320,14 +276,10 @@ public final class SafetyGridStateMachine implements AgentController {
         return vertical.isEmpty() ? candidates : vertical;
     }
 
-    /** {@code false} for cells outside the visible window — use {@code isKnownSelfTerritory} once that exists (Task 4). */
+    /** {@code false} for cells outside the visible window. */
     private boolean isSelfTerritory(GameApi game, GridPosition position) {
-        return territoryIs(game, position, TerritoryView.SELF);
-    }
-
-    private boolean territoryIs(GameApi game, GridPosition position, TerritoryView territory) {
         return MovementUtils.findCell(game.getVisibleGrid(), position)
-                .map(cell -> cell.territory() == territory)
+                .map(cell -> cell.territory() == TerritoryView.SELF)
                 .orElse(false);
     }
 
@@ -405,26 +357,6 @@ public final class SafetyGridStateMachine implements AgentController {
 
     // ---- Pure helpers (no GameApi; unit-testable directly) ---------------
 
-    /** Owned cell with at least one in-bounds cardinal neighbor that is not {@code SELF}. */
-    static boolean isTerritoryEdge(GridPosition position, VisibleCell[][] visibleGrid, int boardWidth, int boardHeight) {
-        Optional<VisibleCell> current = MovementUtils.findCell(visibleGrid, position);
-        if (current.isEmpty() || current.get().territory() != TerritoryView.SELF) {
-            return false;
-        }
-        for (Direction direction : Direction.values()) {
-            GridPosition neighbor = MovementUtils.nextPosition(position, direction);
-            if (!MovementUtils.isWithinBoard(neighbor, boardWidth, boardHeight)) {
-                continue;
-            }
-            if (MovementUtils.findCell(visibleGrid, neighbor)
-                    .map(cell -> cell.territory() != TerritoryView.SELF)
-                    .orElse(false)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     static int chebyshevDistance(GridPosition a, GridPosition b) {
         return Math.max(Math.abs(a.x() - b.x()), Math.abs(a.y() - b.y()));
     }
@@ -470,11 +402,4 @@ public final class SafetyGridStateMachine implements AgentController {
         return direction == Direction.NORTH || direction == Direction.SOUTH;
     }
 
-    static boolean isWestOfMidline(GridPosition position, int boardWidth) {
-        return position.x() < boardWidth / 2;
-    }
-
-    static boolean isOnHomeHalf(GridPosition currentPosition, GridPosition respawnPosition, int boardWidth) {
-        return isWestOfMidline(currentPosition, boardWidth) == isWestOfMidline(respawnPosition, boardWidth);
-    }
 }

@@ -469,6 +469,30 @@ Expected: all tests pass.
 
 ---
 
+### Task 7: Consolidate trail-free movement and remove redundant helpers
+
+**Files:**
+- Modify: `src/main/java/candidate/examples/SafetyGridStateMachine.java`
+- Test: `src/test/java/candidate/examples/SafetyGridStateMachineTest.java`
+
+- [ ] **Step 1: Establish the behavior-preservation baseline**
+
+Run `bash mvnw test`. Expected: all tests pass before the structural edit.
+
+- [ ] **Step 2: Consolidate trail-free selection**
+
+Route every trail-free non-combat turn through one method. Continue a committed owned approach first; otherwise start OUT when a safe adjacent non-`SELF` move exists; otherwise choose REPOSITION. Set REPOSITION or OUT from the chosen destination.
+
+- [ ] **Step 3: Remove redundant state and lookup machinery**
+
+Delete territory-edge helpers and tests, remove `ObservedBoard`, use live visibility for the ACROSS mirror check, inline territory comparison, and replace home/away grid sizing with `SAFETY_GRID_SIZE = 5`.
+
+- [ ] **Step 4: Verify preserved behavior and reduced scope**
+
+Run `bash mvnw test` and verify no references remain to `ObservedBoard`, territory-edge helpers, or home/away grid sizing in `SafetyGridStateMachine`.
+
+---
+
 ### Task 6: Replace openness with committed random ray selection
 
 **Files:**

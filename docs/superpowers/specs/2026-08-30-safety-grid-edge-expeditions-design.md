@@ -41,12 +41,19 @@ If no safe non-`SELF` move exists, remain on owned territory using REPOSITION ra
 
 ACROSS chooses randomly among safe perpendicular directions. BACK chooses randomly among safe moves that remain on `SELF` territory. AVOID continues to maximize distance from the opponent, without an open-space tie-break.
 
+## Safety grid and visibility
+
+Use one conservative `SAFETY_GRID_SIZE = 5` everywhere instead of separate home and away sizes. The ACROSS mirror position is therefore at most two cells from the head and is read directly from the live visible grid. If a nonstandard visibility window cannot show that position, treat it as unavailable and turn BACK early; no persistent `ObservedBoard` is needed.
+
 ## Implementation scope
 
 - Replace separate REPOSITION/edge checks with one trail-free movement decision.
 - Remove `TERRITORY_VISIBLE_THRESHOLD` and `VERTICAL_WEIGHT`.
 - Remove `opennessScore`, `mostOpenFirst`, and `isOnSideOf`.
 - Remove `isTerritoryEdge`, `onTerritoryEdge`, and `shouldReposition`.
+- Remove `ObservedBoard` and read the ACROSS mirror position from the live visible grid.
+- Replace `AWAY_GRID_SIZE`, `HOME_GRID_SIZE`, `gridSizeFor`, `isWestOfMidline`, and `isOnHomeHalf` with `SAFETY_GRID_SIZE = 5`.
+- Inline the one-use generic territory comparison into `isSelfTerritory`.
 - Add a straight-ray distance helper with a maximum distance of three.
 - Retain `repositionDirection` while moving safely through owned territory.
 - Add one seeded `Random` field for all random choices.

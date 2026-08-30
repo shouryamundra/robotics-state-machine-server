@@ -98,20 +98,6 @@ class SafetyGridStateMachineTest {
     }
 
     @Test
-    void isWestOfMidlineComparesXToHalfBoardWidth() {
-        assertTrue(SafetyGridStateMachine.isWestOfMidline(new GridPosition(4, 0), 50));
-        assertFalse(SafetyGridStateMachine.isWestOfMidline(new GridPosition(45, 0), 50));
-    }
-
-    @Test
-    void isOnHomeHalfIsTrueWhenCurrentAndRespawnAreOnTheSameSide() {
-        GridPosition respawn = new GridPosition(4, 25);
-
-        assertTrue(SafetyGridStateMachine.isOnHomeHalf(new GridPosition(10, 25), respawn, 50));
-        assertFalse(SafetyGridStateMachine.isOnHomeHalf(new GridPosition(40, 25), respawn, 50));
-    }
-
-    @Test
     void repositionKeepsItsRandomDirectionWhileValid() {
         VisibleCell[][] grid = filledGrid(7, TerritoryView.SELF);
         StubGameApi game = new StubGameApi(new GridPosition(3, 3), new GridPosition(0, 3), grid);
@@ -237,22 +223,6 @@ class SafetyGridStateMachineTest {
 
         assertEquals("REPOSITION", controller.getDebugState());
         assertTrue(List.of(Direction.NORTH, Direction.SOUTH, Direction.WEST).contains(game.movedDirection));
-    }
-
-    @Test
-    void ownedCellIsAnEdgeWhenAnInBoundsNeighborIsNotOwned() {
-        GridPosition position = new GridPosition(2, 2);
-        VisibleCell[][] grid = filledGrid(TerritoryView.SELF);
-        grid[1][2] = new VisibleCell(new GridPosition(2, 1), OccupantView.EMPTY, TerritoryView.UNOWNED);
-
-        assertTrue(SafetyGridStateMachine.isTerritoryEdge(position, grid, 5, 5));
-    }
-
-    @Test
-    void ownedCellIsNotAnEdgeWhenEveryInBoundsNeighborIsOwned() {
-        GridPosition position = new GridPosition(2, 2);
-
-        assertFalse(SafetyGridStateMachine.isTerritoryEdge(position, filledGrid(TerritoryView.SELF), 5, 5));
     }
 
     @Test
