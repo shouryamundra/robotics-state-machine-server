@@ -1,13 +1,21 @@
 package candidate.examples;
 
 import org.junit.jupiter.api.Test;
+import territorygame.api.AgentController;
 import territorygame.api.Direction;
 import territorygame.api.GridPosition;
+import territorygame.domain.GameConfig;
+import territorygame.engine.GameEngine;
+import territorygame.engine.GameSnapshot;
 
 import java.util.List;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SafetyGridStateMachineTest {
@@ -111,5 +119,35 @@ class SafetyGridStateMachineTest {
     void enemyHalfDirectionPointsAwayFromRespawnSide() {
         assertEquals(Direction.EAST, SafetyGridStateMachine.enemyHalfDirection(new GridPosition(4, 25), 50));
         assertEquals(Direction.WEST, SafetyGridStateMachine.enemyHalfDirection(new GridPosition(45, 25), 50));
+    }
+
+    @Test
+    void playsManyTurnsAgainstItselfWithoutFrameworkErrors() throws InterruptedException {
+        GameConfig config = new GameConfig(
+                20, 20, 11, 40,
+                List.of(new GridPosition(4, 10), new GridPosition(15, 10)),
+                3, 0, // no auto-play delay in tests
+                20, List.of(1L, 2L)
+        );
+        List<AgentController> controllers = List.of(
+                new SafetyGridStateMachine(),
+                new SafetyGridStateMachine()
+        );
+        GameEngine engine = new GameEngine(config, controllers);
+        BlockingQueue<GameSnapshot> snapshots = new LinkedBlockingQueue<>();
+        engine.addObserver(snapshots::add);
+        engine.reset(controllers);
+        assertNotNull(snapshots.poll(2, TimeUnit.SECONDS));
+
+        engine.start();
+
+        GameSnapshot last = null;
+        for (int i = 0; i < 80; i++) { // 40 turns per player, 2 players
+            GameSnapshot snapshot = snapshots.poll(2, TimeUnit.SECONDS);
+            assertNotNull(snapshot, "engine stalled or threw before completing all turns");
+            last = snapshot;
+        }
+
+        assertTrue(last.gameOver());
     }
 }

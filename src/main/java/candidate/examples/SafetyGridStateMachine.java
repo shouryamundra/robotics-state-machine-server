@@ -21,7 +21,17 @@ public final class SafetyGridStateMachine implements AgentController {
 
     @Override
     public void takeTurn(GameApi game) {
-        game.move(Direction.NORTH); // replaced in a later task
+        game.move(fallback(game));
+    }
+
+    @Override
+    public String getDebugState() {
+        return "FALLBACK"; // replaced with the real Phase enum in a later task
+    }
+
+    private Direction fallback(GameApi game) {
+        List<Direction> valid = MovementUtils.validDirections(game);
+        return valid.isEmpty() ? Direction.NORTH : valid.get(0);
     }
 
     // ---- Pure helpers (no GameApi; unit-testable directly) ---------------

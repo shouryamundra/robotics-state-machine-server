@@ -3,6 +3,7 @@ package territorygame.controller;
 import candidate.CandidateController;
 import candidate.examples.BasicStateMachine;
 import candidate.examples.RandomStateMachine;
+import candidate.examples.SafetyGridStateMachine;
 import territorygame.api.AgentController;
 
 import java.util.List;
@@ -25,6 +26,7 @@ public final class AvailableControllers {
 
     public static final List<ControllerOption> ALL = List.of(
             new ControllerOption("Basic State Machine", seed -> new BasicStateMachine()),
+            new ControllerOption("Safety Grid State Machine", seed -> new SafetyGridStateMachine()),
             new ControllerOption("Enemy State Machine", EnemyStateMachine::new),
             new ControllerOption("Random State Machine", seed -> new RandomStateMachine()),
             new ControllerOption("Candidate Controller", seed -> new CandidateController())
