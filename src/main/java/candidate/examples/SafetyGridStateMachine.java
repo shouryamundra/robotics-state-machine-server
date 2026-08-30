@@ -8,6 +8,7 @@ import territorygame.api.OccupantView;
 import territorygame.api.TerritoryView;
 import territorygame.api.VisibleCell;
 import territorygame.helpers.MovementUtils;
+import territorygame.helpers.ObservedBoard;
 
 import java.util.Comparator;
 import java.util.List;
@@ -34,9 +35,18 @@ public final class SafetyGridStateMachine implements AgentController {
     }
 
     private Phase phase = Phase.OUT;
+    private Direction outDirection;
+    private int stepsOut;
+    private Direction acrossDirection;
+    private ObservedBoard observedBoard;
 
     @Override
     public void takeTurn(GameApi game) {
+        if (observedBoard == null) {
+            observedBoard = new ObservedBoard(game.getBoardWidth(), game.getBoardHeight());
+        }
+        observedBoard.update(game.getVisibleGrid());
+
         Optional<GridPosition> intrusion = findOpponentTrailOnOurTerritory(game);
         Direction direction;
         if (intrusion.isPresent()) {
@@ -49,7 +59,7 @@ public final class SafetyGridStateMachine implements AgentController {
             phase = Phase.REPOSITION;
             direction = pickReposition(game);
         } else {
-            direction = fallback(game); // replaced with pickExpedition(game) in Task 4
+            direction = pickExpedition(game);
         }
         game.move(direction);
     }
@@ -97,6 +107,85 @@ public final class SafetyGridStateMachine implements AgentController {
             return towardEnemy;
         }
         return chooseBest(game, candidates, mostOpenFirst(game));
+    }
+
+    // ---- Expedition: OUT / ACROSS / BACK --------------------------------
+
+    private int gridSizeFor(GameApi game) {
+        boolean home = isOnHomeHalf(game.getAgentPosition(), game.getRespawnPosition(), game.getBoardWidth());
+        return home ? HOME_GRID_SIZE : AWAY_GRID_SIZE;
+    }
+
+    /** Starts a fresh expedition whenever we're standing on territory; otherwise continues whichever phase we're in. */
+    private Direction pickExpedition(GameApi game) {
+        if (game.getActiveTrail().isEmpty()) {
+            phase = Phase.OUT;
+            outDirection = chooseBest(game, safeDirections(game), mostOpenFirst(game));
+            stepsOut = 0;
+        }
+        return switch (phase) {
+            case OUT -> pickOut(game);
+            case ACROSS -> pickAcross(game);
+            // ATTACK/AVOID/REPOSITION never reach here; BACK, and any interrupted-then-resumed
+            // phase left over from an ATTACK/AVOID detour, both just keep heading home.
+            default -> pickBack(game);
+        };
+    }
+
+    private Direction pickOut(GameApi game) {
+        GridPosition nextHead = destination(game, outDirection);
+        if (safeDirections(game).contains(outDirection) && fitsSafetyGrid(nextHead, game.getActiveTrail(), gridSizeFor(game))) {
+            stepsOut++;
+            return outDirection;
+        }
+        phase = Phase.ACROSS;
+        acrossDirection = pickAcrossDirection(game);
+        return pickAcross(game);
+    }
+
+    private Direction pickAcrossDirection(GameApi game) {
+        List<Direction> safe = safeDirections(game);
+        List<Direction> perpendicular = perpendicularOptions(outDirection).stream()
+                .filter(safe::contains)
+                .toList();
+        if (perpendicular.isEmpty()) {
+            return outDirection; // both perpendicular options are blocked; this will fail the grid/mirror check below and fall back to BACK
+        }
+        return chooseBest(game, perpendicular, mostOpenFirst(game));
+    }
+
+    private Direction pickAcross(GameApi game) {
+        if (canTakeAnotherAcrossStep(game)) {
+            return acrossDirection;
+        }
+        phase = Phase.BACK;
+        return pickBack(game);
+    }
+
+    private boolean canTakeAnotherAcrossStep(GameApi game) {
+        if (!safeDirections(game).contains(acrossDirection)) {
+            return false;
+        }
+        GridPosition nextHead = destination(game, acrossDirection);
+        if (!fitsSafetyGrid(nextHead, game.getActiveTrail(), gridSizeFor(game))) {
+            return false;
+        }
+        GridPosition mirrored = mirrorBack(nextHead, outDirection, stepsOut);
+        return isKnownSelfTerritory(game, mirrored);
+    }
+
+    /** Like {@link #isSelfTerritory}, but falls back to {@code observedBoard} for cells outside the live window. */
+    private boolean isKnownSelfTerritory(GameApi game, GridPosition position) {
+        if (!MovementUtils.isWithinBoard(position, game.getBoardWidth(), game.getBoardHeight())) {
+            return false;
+        }
+        Optional<VisibleCell> live = MovementUtils.findCell(game.getVisibleGrid(), position);
+        if (live.isPresent()) {
+            return live.get().territory() == TerritoryView.SELF;
+        }
+        return observedBoard.get(position)
+                .map(cell -> cell.territory() == TerritoryView.SELF)
+                .orElse(false);
     }
 
     // ---- Shared BACK logic ------------------------------------------------
