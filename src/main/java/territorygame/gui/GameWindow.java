@@ -117,6 +117,8 @@ public final class GameWindow extends JFrame implements GameObserver {
 
     private static final int MIN_TURN_DELAY_MILLIS = 0;
     private static final int MAX_TURN_DELAY_MILLIS = 500;
+    /** Slider travel is 0–1000; delay is mapped through a square curve so the fast end isn't cramped into the left half. */
+    private static final int SPEED_SLIDER_MAX = 1000;
 
     /**
      * Two stacked rows rather than one wide row: player selection on top,
@@ -190,10 +192,11 @@ public final class GameWindow extends JFrame implements GameObserver {
     private JPanel buildSpeedControl(int initialTurnDelayMillis) {
         int clampedInitial = Math.max(MIN_TURN_DELAY_MILLIS, Math.min(MAX_TURN_DELAY_MILLIS, initialTurnDelayMillis));
 
-        JSlider speedSlider = new JSlider(MIN_TURN_DELAY_MILLIS, MAX_TURN_DELAY_MILLIS, clampedInitial);
-        speedSlider.setPreferredSize(new Dimension(120, speedSlider.getPreferredSize().height));
-        // Slider value is the turn delay in milliseconds: left (0) is fastest, right is slowest.
-        speedSlider.addChangeListener(event -> gameEngine.setTurnDelayMillis(speedSlider.getValue()));
+        JSlider speedSlider = new JSlider(0, SPEED_SLIDER_MAX, delayToSlider(clampedInitial));
+        speedSlider.setPreferredSize(new Dimension(180, speedSlider.getPreferredSize().height));
+        // Left is Fast (0ms), right is Slow (500ms), but delay grows with the square of
+        // slider travel so 0–250ms — the useful watchable range — uses most of the bar.
+        speedSlider.addChangeListener(event -> gameEngine.setTurnDelayMillis(sliderToDelay(speedSlider.getValue())));
 
         JPanel panel = new JPanel();
         panel.setLayout(new BoxLayout(panel, BoxLayout.X_AXIS));
@@ -203,6 +206,16 @@ public final class GameWindow extends JFrame implements GameObserver {
         panel.add(speedSlider);
         panel.add(new JLabel("Slow"));
         return panel;
+    }
+
+    /** Inverse of {@link #sliderToDelay}: place the handle so the given delay sits on the square curve. */
+    private static int delayToSlider(int delayMillis) {
+        return (int) Math.round(Math.sqrt(delayMillis / (double) MAX_TURN_DELAY_MILLIS) * SPEED_SLIDER_MAX);
+    }
+
+    private static int sliderToDelay(int sliderValue) {
+        double t = sliderValue / (double) SPEED_SLIDER_MAX;
+        return (int) Math.round(t * t * MAX_TURN_DELAY_MILLIS);
     }
 
     private JPanel wrapBoard() {
