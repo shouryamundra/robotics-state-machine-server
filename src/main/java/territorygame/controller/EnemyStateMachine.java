@@ -71,6 +71,8 @@ public final class EnemyStateMachine implements AgentController {
     private State currentState = State.EXPANDING;
     private int previousOwnedTerritoryCount;
     private boolean firstMove = true;
+    private Direction direction = null;
+    private int bestOpenNeighborCount = 0;
 
     public EnemyStateMachine() {
         this(new Random().nextLong());
@@ -101,7 +103,7 @@ public final class EnemyStateMachine implements AgentController {
 
     @Override
     public String getDebugState() {
-        return currentState.name();
+        return currentState.name() + " " + direction + ", bestOpenNeighborCount: " + bestOpenNeighborCount;
     }
 
     // ---- State selection ----------------------------------------------
@@ -176,7 +178,10 @@ public final class EnemyStateMachine implements AgentController {
 
     /** Deterministically pushes toward whichever safe direction opens onto the most free space. */
     private Direction pickExpanding(GameApi game) {
-        return chooseBest(safeDirections(game), mostOpenFirst(game));
+        Direction best = chooseBest(safeDirections(game), mostOpenFirst(game));
+        this.direction = best;
+        this.bestOpenNeighborCount = openNeighborCount(game, best);
+        return best;
     }
 
     /** Stays inside our own territory if any safe move lands there (zero trail risk); otherwise heads for the nearest of it. */
@@ -270,7 +275,7 @@ public final class EnemyStateMachine implements AgentController {
                 .toList();
     }
 
-    /** Count of FREE cells cardinally adjacent to the given direction's destination, a cheap open-space heuristic. */
+    /** Count of on-board FREE cells cardinally adjacent to the destination. Off-board neighbors are not FREE. */
     private int openNeighborCount(GameApi game, Direction direction) {
         GridPosition destination = destination(game, direction);
         int count = 0;
@@ -305,7 +310,11 @@ public final class EnemyStateMachine implements AgentController {
         return MovementUtils.nextPosition(game.getAgentPosition(), direction);
     }
 
+    /** {@code null} when {@code position} is off the board (a corner or edge), not a FREE cell. */
     private CellViewType typeAt(GameApi game, GridPosition position) {
+        if (!MovementUtils.isWithinBoard(position, game.getBoardWidth(), game.getBoardHeight())) {
+            return null;
+        }
         return MovementUtils.findCell(game.getVisibleGrid(), position)
                 .map(VisibleCell::type)
                 .orElse(CellViewType.FREE);

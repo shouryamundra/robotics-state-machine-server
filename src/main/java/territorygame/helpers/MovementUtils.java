@@ -44,7 +44,8 @@ public final class MovementUtils {
      * Checks the two mechanical invalid-move rules available before
      * submission: board bounds and whether the adjacent destination is
      * currently the opponent's agent. Makes no strategic decision and picks
-     * no alternative direction.
+     * no alternative direction. Notably, still allows moving onto the player's
+     * own trail.
      */
     public static boolean isValidMove(GameApi game, Direction direction) {
         GridPosition destination = nextPosition(game.getAgentPosition(), direction);
@@ -70,7 +71,8 @@ public final class MovementUtils {
         return Optional.empty();
     }
 
-    /** Directions that are mechanically valid right now: in bounds and not onto the opponent's agent. */
+    /** Directions that are mechanically valid right now: in bounds and not onto the 
+     * opponent's agent. Still includes moves onto the player's own trail. */
     public static List<Direction> validDirections(GameApi game) {
         List<Direction> directions = new ArrayList<>();
         for (Direction direction : Direction.values()) {
