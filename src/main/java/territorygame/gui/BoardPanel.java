@@ -91,8 +91,17 @@ public final class BoardPanel extends JPanel {
         for (int y = 0; y < snapshot.height(); y++) {
             for (int x = 0; x < snapshot.width(); x++) {
                 GameSnapshot.CellSnapshot cell = snapshot.cells()[y][x];
-                g.setColor(colorFor(cell));
+                g.setColor(territoryColor(cell));
                 g.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+                if (cell.trailOwner() != null) {
+                    g.setColor(TRAIL_COLORS[cell.trailOwner().index() % TRAIL_COLORS.length]);
+                    int inset = Math.max(1, cellSize / 4);
+                    g.fillRect(
+                            x * cellSize + inset,
+                            y * cellSize + inset,
+                            cellSize - 2 * inset,
+                            cellSize - 2 * inset);
+                }
             }
         }
         g.setColor(GRID_LINE_COLOR);
@@ -104,10 +113,7 @@ public final class BoardPanel extends JPanel {
         }
     }
 
-    private Color colorFor(GameSnapshot.CellSnapshot cell) {
-        if (cell.trailOwner() != null) {
-            return TRAIL_COLORS[cell.trailOwner().index() % TRAIL_COLORS.length];
-        }
+    private Color territoryColor(GameSnapshot.CellSnapshot cell) {
         if (cell.territoryOwner() != null) {
             return TERRITORY_COLORS[cell.territoryOwner().index() % TERRITORY_COLORS.length];
         }

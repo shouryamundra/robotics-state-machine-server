@@ -1,6 +1,5 @@
 package territorygame.helpers;
 
-import territorygame.api.CellViewType;
 import territorygame.api.GridPosition;
 import territorygame.api.VisibleCell;
 
@@ -15,24 +14,24 @@ public final class ObservedBoard {
 
     private final int width;
     private final int height;
-    private final CellViewType[][] observed;
+    private final VisibleCell[][] observed;
 
     public ObservedBoard(int width, int height) {
         this.width = width;
         this.height = height;
-        this.observed = new CellViewType[height][width];
+        this.observed = new VisibleCell[height][width];
     }
 
     public void update(VisibleCell[][] visibleGrid) {
         for (VisibleCell[] row : visibleGrid) {
             for (VisibleCell cell : row) {
                 GridPosition position = cell.position();
-                observed[position.y()][position.x()] = cell.type();
+                observed[position.y()][position.x()] = cell;
             }
         }
     }
 
-    public Optional<CellViewType> get(GridPosition position) {
+    public Optional<VisibleCell> get(GridPosition position) {
         if (!MovementUtils.isWithinBoard(position, width, height)) {
             return Optional.empty();
         }
@@ -44,7 +43,7 @@ public final class ObservedBoard {
     }
 
     public void clear() {
-        for (CellViewType[] row : observed) {
+        for (VisibleCell[] row : observed) {
             java.util.Arrays.fill(row, null);
         }
     }

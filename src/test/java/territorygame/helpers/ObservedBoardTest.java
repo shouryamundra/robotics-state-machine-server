@@ -1,8 +1,9 @@
 package territorygame.helpers;
 
 import org.junit.jupiter.api.Test;
-import territorygame.api.CellViewType;
 import territorygame.api.GridPosition;
+import territorygame.api.OccupantView;
+import territorygame.api.TerritoryView;
 import territorygame.api.VisibleCell;
 
 import java.util.Optional;
@@ -26,23 +27,25 @@ class ObservedBoardTest {
     void updateStoresLatestValuePerCell() {
         ObservedBoard board = new ObservedBoard(5, 5);
         GridPosition position = new GridPosition(1, 1);
-        VisibleCell[][] grid = {{new VisibleCell(position, CellViewType.SELF_TERRITORY)}};
+        VisibleCell stored = new VisibleCell(position, OccupantView.EMPTY, TerritoryView.SELF);
+        VisibleCell[][] grid = {{stored}};
 
         board.update(grid);
 
         assertTrue(board.hasObserved(position));
-        assertEquals(Optional.of(CellViewType.SELF_TERRITORY), board.get(position));
+        assertEquals(Optional.of(stored), board.get(position));
     }
 
     @Test
     void laterUpdateOverwritesEarlierValueForSameCell() {
         ObservedBoard board = new ObservedBoard(5, 5);
         GridPosition position = new GridPosition(1, 1);
+        VisibleCell later = new VisibleCell(position, OccupantView.EMPTY, TerritoryView.OPPONENT);
 
-        board.update(new VisibleCell[][]{{new VisibleCell(position, CellViewType.FREE)}});
-        board.update(new VisibleCell[][]{{new VisibleCell(position, CellViewType.OPPONENT_TERRITORY)}});
+        board.update(new VisibleCell[][]{{new VisibleCell(position, OccupantView.EMPTY, TerritoryView.UNOWNED)}});
+        board.update(new VisibleCell[][]{{later}});
 
-        assertEquals(Optional.of(CellViewType.OPPONENT_TERRITORY), board.get(position));
+        assertEquals(Optional.of(later), board.get(position));
     }
 
     @Test
@@ -50,7 +53,7 @@ class ObservedBoardTest {
         ObservedBoard board = new ObservedBoard(5, 5);
         GridPosition observed = new GridPosition(1, 1);
         GridPosition untouched = new GridPosition(3, 3);
-        board.update(new VisibleCell[][]{{new VisibleCell(observed, CellViewType.SELF_TERRITORY)}});
+        board.update(new VisibleCell[][]{{new VisibleCell(observed, OccupantView.EMPTY, TerritoryView.SELF)}});
 
         assertFalse(board.hasObserved(untouched));
     }
@@ -59,7 +62,7 @@ class ObservedBoardTest {
     void clearForgetsAllPreviouslyObservedCells() {
         ObservedBoard board = new ObservedBoard(5, 5);
         GridPosition position = new GridPosition(1, 1);
-        board.update(new VisibleCell[][]{{new VisibleCell(position, CellViewType.SELF_TERRITORY)}});
+        board.update(new VisibleCell[][]{{new VisibleCell(position, OccupantView.EMPTY, TerritoryView.SELF)}});
 
         board.clear();
 

@@ -128,9 +128,11 @@ A cell on the board. `(0, 0)` is the top-left corner.
 
 ### VisibleCell
 ```
-record VisibleCell(GridPosition position, CellViewType type)
+record VisibleCell(GridPosition position, OccupantView occupant, TerritoryView territory)
 ```
-One cell you can see, and what's in it.
+One cell you can see. `occupant` is the head/trail layer; `territory` is
+the land underneath. Both are always present — a trail does not hide
+territory.
 
 ### Direction
 ```
@@ -144,17 +146,22 @@ enum MoveResult { MOVED, CAPTURED, DIED, INVALID }
 What `move()` just did: `MOVED` (normal step), `CAPTURED` (your trail
 closed), `DIED` (you hit a trail), or `INVALID` (nothing happened).
 
-### CellViewType
+### OccupantView
 ```
-enum CellViewType {
-    FREE, SELF_TERRITORY, OPPONENT_TERRITORY,
-    SELF_TRAIL, OPPONENT_TRAIL, SELF_AGENT, OPPONENT_AGENT
+enum OccupantView {
+    EMPTY, SELF_TRAIL, OPPONENT_TRAIL, SELF_AGENT, OPPONENT_AGENT
 }
 ```
-What's in a cell you can see. You'll never see the opponent's real player
-number, only `SELF_*` or `OPPONENT_*`. If more than one thing is true about
-a cell, the one listed first here wins: an agent standing on a trail shows
-as the agent, not the trail.
+What's standing or trailing on the cell. You'll never see the opponent's
+real player number, only `SELF_*` or `OPPONENT_*`. An agent standing on a
+trail shows as the agent, not the trail.
+
+### TerritoryView
+```
+enum TerritoryView { UNOWNED, SELF, OPPONENT }
+```
+Who owns the land. Independent of `occupant`. Empty unowned space is
+`(EMPTY, UNOWNED)`.
 
 ## Helpers (`territorygame.helpers`)
 
@@ -209,7 +216,7 @@ Picks one of the four directions at random.
 ```
 ObservedBoard(int width, int height)
 void update(VisibleCell[][] visibleGrid)   // call this each turn
-Optional<CellViewType> get(GridPosition position)
+Optional<VisibleCell> get(GridPosition position)
 boolean hasObserved(GridPosition position)
 void clear()
 ```
@@ -232,7 +239,7 @@ about once the basics are working:
   maybe play safer.
 - **Getting home efficiently.** `getRespawnPosition()` isn't necessarily
   your nearest owned cell once you've captured territory elsewhere.
-  Scanning `getVisibleGrid()` for the nearest `SELF_TERRITORY` cell can do
+  Scanning `getVisibleGrid()` for the nearest `TerritoryView.SELF` cell can do
   better.
 - **Trail length is a trade-off.** Longer trails claim more area on
   capture but leave you exposed for longer.

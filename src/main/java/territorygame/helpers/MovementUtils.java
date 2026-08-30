@@ -1,7 +1,7 @@
 package territorygame.helpers;
 
-import territorygame.api.CellViewType;
 import territorygame.api.Direction;
+import territorygame.api.OccupantView;
 import territorygame.api.GameApi;
 import territorygame.api.GridPosition;
 import territorygame.api.VisibleCell;
@@ -55,7 +55,7 @@ public final class MovementUtils {
         // Visibility radius always covers adjacent cells, so an absent cell
         // here is unreachable in practice; bounds are already confirmed above.
         return findCell(game.getVisibleGrid(), destination)
-                .map(cell -> cell.type() != CellViewType.OPPONENT_AGENT)
+                .map(cell -> cell.occupant() != OccupantView.OPPONENT_AGENT)
                 .orElse(true);
     }
 

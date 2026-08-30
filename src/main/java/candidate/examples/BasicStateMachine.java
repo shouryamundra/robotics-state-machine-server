@@ -1,8 +1,8 @@
 package candidate.examples;
 
 import territorygame.api.AgentController;
-import territorygame.api.CellViewType;
 import territorygame.api.Direction;
+import territorygame.api.OccupantView;
 import territorygame.api.GameApi;
 import territorygame.api.GridPosition;
 import territorygame.api.MoveResult;
@@ -118,7 +118,7 @@ public final class BasicStateMachine implements AgentController {
         for (VisibleCell[] row : game.getVisibleGrid()) {
             for (VisibleCell cell : row) {
                 if (cell.position().equals(destination)) {
-                    return cell.type() != CellViewType.SELF_TRAIL;
+                    return cell.occupant() != OccupantView.SELF_TRAIL;
                 }
             }
         }

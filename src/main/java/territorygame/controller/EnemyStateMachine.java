@@ -1,10 +1,11 @@
 package territorygame.controller;
 
 import territorygame.api.AgentController;
-import territorygame.api.CellViewType;
 import territorygame.api.Direction;
 import territorygame.api.GameApi;
 import territorygame.api.GridPosition;
+import territorygame.api.OccupantView;
+import territorygame.api.TerritoryView;
 import territorygame.api.VisibleCell;
 import territorygame.helpers.MovementUtils;
 
@@ -12,6 +13,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.Random;
+import java.util.function.Predicate;
 
 /**
  * Framework code: the standard opponent used for assessment runs. Not part
@@ -143,13 +145,13 @@ public final class EnemyStateMachine implements AgentController {
     }
 
     private boolean shouldBeAggressive(GameApi game) {
-        return nearestVisible(game, CellViewType.OPPONENT_TRAIL).isPresent()
-                || nearestVisible(game, CellViewType.OPPONENT_TERRITORY).isPresent();
+        return nearestOccupant(game, OccupantView.OPPONENT_TRAIL).isPresent()
+                || nearestTerritory(game, TerritoryView.OPPONENT).isPresent();
     }
 
     private boolean opponentIsThreateninglyClose(GameApi game) {
         int threatDistance = game.getVisibleGrid().length / 2;
-        return nearestVisible(game, CellViewType.OPPONENT_AGENT)
+        return nearestOccupant(game, OccupantView.OPPONENT_AGENT)
                 .map(position -> MovementUtils.manhattanDistance(game.getAgentPosition(), position) <= threatDistance)
                 .orElse(false);
     }
@@ -187,26 +189,26 @@ public final class EnemyStateMachine implements AgentController {
     /** Stays inside our own territory if any safe move lands there (zero trail risk); otherwise heads for the nearest of it. */
     private Direction pickReceding(GameApi game) {
         List<Direction> withinTerritory = safeDirections(game).stream()
-                .filter(direction -> typeAt(game, destination(game, direction)) == CellViewType.SELF_TERRITORY)
+                .filter(direction -> territoryAt(game, destination(game, direction)) == TerritoryView.SELF)
                 .toList();
         if (!withinTerritory.isEmpty()) {
             return chooseBest(withinTerritory, mostOpenFirst(game));
         }
-        GridPosition target = nearestVisible(game, CellViewType.SELF_TERRITORY).orElse(game.getRespawnPosition());
+        GridPosition target = nearestTerritory(game, TerritoryView.SELF).orElse(game.getRespawnPosition());
         return chooseBest(safeDirections(game), distanceTo(game, target));
     }
 
     /** Chases the opponent's trail for a kill if one's visible; otherwise cuts toward their territory to steal it on capture. */
     private Direction pickAggressive(GameApi game) {
         return huntOpponentTrail(game).orElseGet(() -> {
-            GridPosition target = nearestVisible(game, CellViewType.OPPONENT_TERRITORY).orElse(game.getAgentPosition());
+            GridPosition target = nearestTerritory(game, TerritoryView.OPPONENT).orElse(game.getAgentPosition());
             return chooseBest(safeDirections(game), distanceTo(game, target));
         });
     }
 
     /** Shared by DEFENSIVE and AGGRESSIVE: a direction that closes on the opponent's visible trail, if one is visible at all. */
     private Optional<Direction> huntOpponentTrail(GameApi game) {
-        return nearestVisible(game, CellViewType.OPPONENT_TRAIL)
+        return nearestOccupant(game, OccupantView.OPPONENT_TRAIL)
                 .map(target -> chooseBest(huntableDirections(game), distanceTo(game, target)));
     }
 
@@ -255,10 +257,10 @@ public final class EnemyStateMachine implements AgentController {
                 .filter(direction -> MovementUtils.isValidBoardMove(
                         game.getAgentPosition(), direction, game.getBoardWidth(), game.getBoardHeight()))
                 .filter(direction -> {
-                    CellViewType type = typeAt(game, destination(game, direction));
-                    return type != CellViewType.SELF_TRAIL
-                            && type != CellViewType.OPPONENT_TRAIL
-                            && type != CellViewType.OPPONENT_AGENT;
+                    OccupantView occupant = occupantAt(game, destination(game, direction));
+                    return occupant != OccupantView.SELF_TRAIL
+                            && occupant != OccupantView.OPPONENT_TRAIL
+                            && occupant != OccupantView.OPPONENT_AGENT;
                 })
                 .toList();
     }
@@ -269,32 +271,40 @@ public final class EnemyStateMachine implements AgentController {
                 .filter(direction -> MovementUtils.isValidBoardMove(
                         game.getAgentPosition(), direction, game.getBoardWidth(), game.getBoardHeight()))
                 .filter(direction -> {
-                    CellViewType type = typeAt(game, destination(game, direction));
-                    return type != CellViewType.SELF_TRAIL && type != CellViewType.OPPONENT_AGENT;
+                    OccupantView occupant = occupantAt(game, destination(game, direction));
+                    return occupant != OccupantView.SELF_TRAIL && occupant != OccupantView.OPPONENT_AGENT;
                 })
                 .toList();
     }
 
-    /** Count of on-board FREE cells cardinally adjacent to the destination. Off-board neighbors are not FREE. */
+    /** Count of on-board empty unowned cells cardinally adjacent to the destination. Off-board neighbors are not open. */
     private int openNeighborCount(GameApi game, Direction direction) {
         GridPosition destination = destination(game, direction);
         int count = 0;
         for (Direction neighborDirection : Direction.values()) {
             GridPosition neighbor = MovementUtils.nextPosition(destination, neighborDirection);
-            if (typeAt(game, neighbor) == CellViewType.FREE) {
+            if (isOpen(cellAt(game, neighbor))) {
                 count++;
             }
         }
         return count;
     }
 
-    private Optional<GridPosition> nearestVisible(GameApi game, CellViewType type) {
+    private Optional<GridPosition> nearestOccupant(GameApi game, OccupantView occupant) {
+        return nearestVisible(game, cell -> cell.occupant() == occupant);
+    }
+
+    private Optional<GridPosition> nearestTerritory(GameApi game, TerritoryView territory) {
+        return nearestVisible(game, cell -> cell.territory() == territory);
+    }
+
+    private Optional<GridPosition> nearestVisible(GameApi game, Predicate<VisibleCell> match) {
         GridPosition from = game.getAgentPosition();
         GridPosition best = null;
         int bestDistance = Integer.MAX_VALUE;
         for (VisibleCell[] row : game.getVisibleGrid()) {
             for (VisibleCell cell : row) {
-                if (cell.type() == type) {
+                if (match.test(cell)) {
                     int distance = MovementUtils.manhattanDistance(from, cell.position());
                     if (distance < bestDistance) {
                         bestDistance = distance;
@@ -310,14 +320,29 @@ public final class EnemyStateMachine implements AgentController {
         return MovementUtils.nextPosition(game.getAgentPosition(), direction);
     }
 
-    /** {@code null} when {@code position} is off the board (a corner or edge), not a FREE cell. */
-    private CellViewType typeAt(GameApi game, GridPosition position) {
+    /** {@code null} when {@code position} is off the board (a corner or edge), not an open cell. */
+    private VisibleCell cellAt(GameApi game, GridPosition position) {
         if (!MovementUtils.isWithinBoard(position, game.getBoardWidth(), game.getBoardHeight())) {
             return null;
         }
         return MovementUtils.findCell(game.getVisibleGrid(), position)
-                .map(VisibleCell::type)
-                .orElse(CellViewType.FREE);
+                .orElse(new VisibleCell(position, OccupantView.EMPTY, TerritoryView.UNOWNED));
+    }
+
+    private OccupantView occupantAt(GameApi game, GridPosition position) {
+        VisibleCell cell = cellAt(game, position);
+        return cell == null ? null : cell.occupant();
+    }
+
+    private TerritoryView territoryAt(GameApi game, GridPosition position) {
+        VisibleCell cell = cellAt(game, position);
+        return cell == null ? null : cell.territory();
+    }
+
+    private static boolean isOpen(VisibleCell cell) {
+        return cell != null
+                && cell.occupant() == OccupantView.EMPTY
+                && cell.territory() == TerritoryView.UNOWNED;
     }
 
     private Direction fallback() {
