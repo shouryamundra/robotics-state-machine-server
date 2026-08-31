@@ -25,7 +25,7 @@ public final class AvailableControllers {
 
     public static final List<ControllerOption> ALL = List.of(
             new ControllerOption("Basic State Machine", seed -> new BasicStateMachine()),
-            new ControllerOption("Enemy State Machine", EnemyStateMachine::new),
+            new ControllerOption("Enemy State Machine", seed -> new EnemyStateMachine()),
             new ControllerOption("Random State Machine", seed -> new RandomStateMachine()),
             new ControllerOption("Candidate Controller", seed -> new CandidateController())
     );

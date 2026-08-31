@@ -12,14 +12,15 @@ import territorygame.helpers.MovementUtils;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Applies capture effects when a player's trail closes: converting the
- * trail to territory and flood-filling the region it encloses. Enclosure
- * uses cardinal adjacency and a flood fill from the board edge, treating
- * the capturer's territory as the boundary; cells unreached by the fill
- * are enclosed. Opponent starting territory is never claimed.
+ * trail to territory and flood-filling only the region that trail newly
+ * encloses. Existing holes in the capturer's territory (for example an
+ * opponent island created by respawn) are left untouched.
  */
 public final class TerritoryResolver {
 
@@ -28,6 +29,8 @@ public final class TerritoryResolver {
         Player capturer = state.getPlayer(capturerId);
         Agent agent = capturer.getAgent();
 
+        Set<GridPosition> alreadyEnclosed = new HashSet<>(findEnclosedCells(board, capturerId));
+
         List<GridPosition> trail = agent.getActiveTrail();
         for (GridPosition cell : trail) {
             board.setTerritoryOwner(cell, capturerId);
@@ -35,24 +38,12 @@ public final class TerritoryResolver {
         }
 
         for (GridPosition enclosedCell : findEnclosedCells(board, capturerId)) {
-            board.setTerritoryOwner(enclosedCell, capturerId);
+            if (!alreadyEnclosed.contains(enclosedCell)) {
+                board.setTerritoryOwner(enclosedCell, capturerId);
+            }
         }
-
-        restoreOpponentStartingTerritories(state, capturerId);
 
         agent.clearTrail();
-    }
-
-    private void restoreOpponentStartingTerritories(GameState state, PlayerId capturerId) {
-        Board board = state.getBoard();
-        for (Player player : state.getPlayers()) {
-            if (player.getId().equals(capturerId)) {
-                continue;
-            }
-            for (GridPosition cell : player.getStartingTerritory()) {
-                board.setTerritoryOwner(cell, player.getId());
-            }
-        }
     }
 
     private List<GridPosition> findEnclosedCells(Board board, PlayerId capturerId) {

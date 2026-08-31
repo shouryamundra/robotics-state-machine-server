@@ -110,8 +110,8 @@ src/main/java/candidate/
 
   examples/                  Read-only reference controllers: BasicStateMachine
                               (a deliberately weak state-machine example) and
-                              RandomStateMachine (the simplest possible baseline).
-                              Not templates for a good strategy.
+                              RandomStateMachine (the simplest possible baseline)
+                              are not templates for a good strategy.
 
 src/test/java/...            mirrors the main package layout.
 ```
