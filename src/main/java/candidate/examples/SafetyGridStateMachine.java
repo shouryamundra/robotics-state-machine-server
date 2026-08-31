@@ -39,7 +39,7 @@ public final class SafetyGridStateMachine implements AgentController {
     private int stepsOut;
     private Direction acrossDirection;
     private Direction repositionDirection;
-    private final Random random = new Random(42);
+    private final Random random = new Random(400);
 
     @Override
     public void takeTurn(GameApi game) {
@@ -155,9 +155,8 @@ public final class SafetyGridStateMachine implements AgentController {
     }
 
     private Direction pickAcrossDirection(GameApi game) {
-        List<Direction> safe = safeDirections(game);
         List<Direction> perpendicular = perpendicularOptions(outDirection).stream()
-                .filter(safe::contains)
+                .filter(direction -> canTakeAnotherAcrossStep(game, direction))
                 .toList();
         if (perpendicular.isEmpty()) {
             return outDirection; // both perpendicular options are blocked; this will fail the grid/mirror check below and fall back to BACK
@@ -174,10 +173,14 @@ public final class SafetyGridStateMachine implements AgentController {
     }
 
     private boolean canTakeAnotherAcrossStep(GameApi game) {
-        if (!safeDirections(game).contains(acrossDirection)) {
+        return canTakeAnotherAcrossStep(game, acrossDirection);
+    }
+
+    private boolean canTakeAnotherAcrossStep(GameApi game, Direction direction) {
+        if (!safeDirections(game).contains(direction)) {
             return false;
         }
-        GridPosition nextHead = destination(game, acrossDirection);
+        GridPosition nextHead = destination(game, direction);
         if (!fitsSafetyGrid(nextHead, game.getActiveTrail(), SAFETY_GRID_SIZE)) {
             return false;
         }
@@ -197,7 +200,8 @@ public final class SafetyGridStateMachine implements AgentController {
             return chooseRandom(game, withinTerritory);
         }
         GridPosition target = nearestKnownSelfTerritory(game).orElse(game.getRespawnPosition());
-        return chooseBest(game, candidates, distanceTo(game, target));
+        return chooseBest(game, candidates, distanceTo(game, target)
+                .thenComparingInt(direction -> direction == outDirection ? 1 : 0));
     }
 
     // ---- Board reading -----------------------------------------------------

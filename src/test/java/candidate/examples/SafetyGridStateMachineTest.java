@@ -212,6 +212,50 @@ class SafetyGridStateMachineTest {
     }
 
     @Test
+    void acrossChoosesThePerpendicularDirectionWithAnOwnedMirror() {
+        VisibleCell[][] grid = filledGrid(7, TerritoryView.SELF);
+        grid[3][3] = new VisibleCell(new GridPosition(3, 3), OccupantView.EMPTY, TerritoryView.OPPONENT);
+        StubGameApi game = new StubGameApi(new GridPosition(2, 3), new GridPosition(0, 3), grid);
+        SafetyGridStateMachine controller = new SafetyGridStateMachine();
+
+        controller.takeTurn(game);
+        assertEquals(Direction.EAST, game.movedDirection);
+
+        grid[2][2] = new VisibleCell(new GridPosition(2, 2), OccupantView.EMPTY, TerritoryView.UNOWNED);
+        game.position = new GridPosition(3, 3);
+        game.activeTrail = List.of(new GridPosition(3, 3));
+        controller.takeTurn(game);
+
+        assertEquals("ACROSS", controller.getDebugState());
+        assertEquals(Direction.SOUTH, game.movedDirection);
+    }
+
+    @Test
+    void avoidDoesNotContinueFartherOutWhenReturnMovesTie() {
+        VisibleCell[][] grid = filledGrid(7, TerritoryView.UNOWNED);
+        grid[4][3] = new VisibleCell(new GridPosition(3, 4), OccupantView.EMPTY, TerritoryView.SELF);
+        grid[5][3] = new VisibleCell(new GridPosition(3, 5), OccupantView.EMPTY, TerritoryView.SELF);
+        StubGameApi game = new StubGameApi(new GridPosition(3, 4), new GridPosition(0, 3), grid);
+        SafetyGridStateMachine controller = new SafetyGridStateMachine();
+
+        controller.takeTurn(game);
+        game.position = new GridPosition(3, 3);
+        game.activeTrail = List.of(new GridPosition(3, 3));
+        controller.takeTurn(game);
+
+        grid[3][3] = new VisibleCell(
+                new GridPosition(3, 3), OccupantView.SELF_TRAIL, TerritoryView.UNOWNED);
+        grid[2][6] = new VisibleCell(
+                new GridPosition(6, 2), OccupantView.OPPONENT_AGENT, TerritoryView.UNOWNED);
+        game.position = new GridPosition(3, 2);
+        game.activeTrail = List.of(new GridPosition(3, 3), new GridPosition(3, 2));
+        controller.takeTurn(game);
+
+        assertEquals("AVOID", controller.getDebugState());
+        assertEquals(Direction.EAST, game.movedDirection);
+    }
+
+    @Test
     void blockedTerritoryEdgeRepositionsInsteadOfStartingOut() {
         VisibleCell[][] grid = filledGrid(TerritoryView.SELF);
         grid[2][3] = new VisibleCell(
