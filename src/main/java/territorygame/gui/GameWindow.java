@@ -39,7 +39,9 @@ import java.util.List;
 /**
  * Top-level Swing viewer for the full authoritative game. Lets the user
  * pick which controller occupies each player slot and drives Start/Pause/
- * Step/Reset. Contains no game-rule logic; every update arrives as an
+ * Back/Forward/Step/Reset. Back and Forward only change which already-
+ * received snapshot is shown; they never rewind match state. Contains no
+ * game-rule logic; every update arrives as an
  * immutable {@link GameSnapshot} and is marshalled onto the EDT here.
  */
 public final class GameWindow extends JFrame implements GameObserver {
@@ -47,11 +49,14 @@ public final class GameWindow extends JFrame implements GameObserver {
     private final GameConfig config;
     private final GameEngine gameEngine;
     private final BoardPanel boardPanel;
+    private final SnapshotHistory<GameSnapshot> snapshotHistory = new SnapshotHistory<>();
     private final JComboBox<ControllerOption> player0Combo = new JComboBox<>(toArray());
     private final JComboBox<ControllerOption> player1Combo = new JComboBox<>(toArray());
     private final PlayerCard[] playerCards = {new PlayerCard(0), new PlayerCard(1)};
     private final JLabel matchStatusLabel = new JLabel();
     private final JLabel errorLabel = new JLabel();
+    private final JButton backButton = new JButton("Back");
+    private final JButton forwardButton = new JButton("Forward");
 
     public GameWindow(GameConfig config) {
         super("Territory Capture");
@@ -123,7 +128,7 @@ public final class GameWindow extends JFrame implements GameObserver {
     /**
      * Two stacked rows rather than one wide row: player selection on top,
      * actions and speed below. A single row wide enough for both combo
-     * boxes, four buttons, and the speed slider can exceed the window width
+     * boxes, the action buttons, and the speed slider can exceed the window width
      * once a look-and-feel's fonts/padding are taken into account, and
      * BoxLayout doesn't wrap — it would just run off the edge. Splitting the
      * content is a fix that holds regardless of exact pixel widths, rather
@@ -172,11 +177,28 @@ public final class GameWindow extends JFrame implements GameObserver {
         JButton resetButton = new JButton("Reset");
         startButton.addActionListener(event -> gameEngine.start());
         pauseButton.addActionListener(event -> gameEngine.pause());
+        backButton.setEnabled(false);
+        forwardButton.setEnabled(false);
+        backButton.addActionListener(event -> {
+            gameEngine.pause();
+            if (snapshotHistory.back()) {
+                showCurrentSnapshot();
+            }
+        });
+        forwardButton.addActionListener(event -> {
+            if (snapshotHistory.forward()) {
+                showCurrentSnapshot();
+            }
+        });
         stepButton.addActionListener(event -> gameEngine.step());
         resetButton.addActionListener(event -> gameEngine.reset(currentSelections()));
         row.add(startButton);
         row.add(Box.createHorizontalStrut(8));
         row.add(pauseButton);
+        row.add(Box.createHorizontalStrut(8));
+        row.add(backButton);
+        row.add(Box.createHorizontalStrut(8));
+        row.add(forwardButton);
         row.add(Box.createHorizontalStrut(8));
         row.add(stepButton);
         row.add(Box.createHorizontalStrut(8));
@@ -274,9 +296,33 @@ public final class GameWindow extends JFrame implements GameObserver {
     @Override
     public void onGameStateChanged(GameSnapshot snapshot) {
         SwingUtilities.invokeLater(() -> {
-            boardPanel.setSnapshot(snapshot);
-            updateStatus(snapshot);
+            ingestEngineSnapshot(snapshotHistory, snapshot);
+            showCurrentSnapshot();
         });
+    }
+
+    /**
+     * Fresh matches (Reset / first paint) publish lastMoveResult == null.
+     * Replace history so an in-flight Step that finished just before Reset
+     * cannot leave a leftover frame behind the new initial board.
+     */
+    static void ingestEngineSnapshot(SnapshotHistory<GameSnapshot> history, GameSnapshot snapshot) {
+        if (snapshot.lastMoveResult() == null) {
+            history.clear();
+        }
+        history.record(snapshot);
+    }
+
+    private void showCurrentSnapshot() {
+        GameSnapshot snapshot = snapshotHistory.current();
+        boardPanel.setSnapshot(snapshot);
+        updateStatus(snapshot);
+        updateHistoryButtons();
+    }
+
+    private void updateHistoryButtons() {
+        backButton.setEnabled(snapshotHistory.canGoBack());
+        forwardButton.setEnabled(snapshotHistory.canGoForward());
     }
 
     private void updateStatus(GameSnapshot snapshot) {
@@ -289,6 +335,10 @@ public final class GameWindow extends JFrame implements GameObserver {
                 ? "Game over — " + winnerText(players)
                 : "Active: Player " + (indexOfActivePlayer(snapshot) + 1)
                     + "   ·   Last move: " + (snapshot.lastMoveResult() == null ? "-" : snapshot.lastMoveResult());
+        if (!snapshotHistory.isAtLive()) {
+            statusText = "Reviewing " + snapshotHistory.position() + " / " + snapshotHistory.size()
+                    + "   ·   " + statusText;
+        }
         matchStatusLabel.setText(statusText);
 
         boolean hasError = snapshot.errorMessage() != null;
