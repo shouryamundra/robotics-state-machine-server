@@ -99,4 +99,42 @@ class SnapshotHistoryTest {
         assertEquals(2, history.position());
         assertEquals(3, history.size());
     }
+
+    @Test
+    void backByTenMovesTenSnapshots() {
+        SnapshotHistory<String> history = historyWith(15);
+        history.back(10);
+        assertEquals("s5", history.current());
+    }
+
+    @Test
+    void backByTenClampsAtTheStart() {
+        SnapshotHistory<String> history = historyWith(4);
+        history.back(10);
+        assertEquals("s1", history.current());
+    }
+
+    @Test
+    void forwardByTenMovesTenSnapshots() {
+        SnapshotHistory<String> history = historyWith(15);
+        history.back(14);
+        history.forward(10);
+        assertEquals("s11", history.current());
+    }
+
+    @Test
+    void forwardByTenClampsAtLive() {
+        SnapshotHistory<String> history = historyWith(4);
+        history.back(2);
+        history.forward(10);
+        assertEquals("s4", history.current());
+    }
+
+    private static SnapshotHistory<String> historyWith(int count) {
+        SnapshotHistory<String> history = new SnapshotHistory<>();
+        for (int i = 1; i <= count; i++) {
+            history.record("s" + i);
+        }
+        return history;
+    }
 }

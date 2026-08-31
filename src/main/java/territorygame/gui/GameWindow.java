@@ -39,9 +39,9 @@ import java.util.List;
 /**
  * Top-level Swing viewer for the full authoritative game. Lets the user
  * pick which controller occupies each player slot and drives Start/Pause/
- * Back/Forward/Step/Reset. Back and Forward only change which already-
- * received snapshot is shown; they never rewind match state. Contains no
- * game-rule logic; every update arrives as an
+ * Back/Forward/Back 10/Forward 10/Step/Reset. Review buttons only change
+ * which already-received snapshot is shown; they never rewind match state.
+ * Contains no game-rule logic; every update arrives as an
  * immutable {@link GameSnapshot} and is marshalled onto the EDT here.
  */
 public final class GameWindow extends JFrame implements GameObserver {
@@ -56,7 +56,9 @@ public final class GameWindow extends JFrame implements GameObserver {
     private final JLabel matchStatusLabel = new JLabel();
     private final JLabel errorLabel = new JLabel();
     private final JButton backButton = new JButton("Back");
+    private final JButton backTenButton = new JButton("Back 10");
     private final JButton forwardButton = new JButton("Forward");
+    private final JButton forwardTenButton = new JButton("Forward 10");
 
     public GameWindow(GameConfig config) {
         super("Territory Capture");
@@ -124,6 +126,7 @@ public final class GameWindow extends JFrame implements GameObserver {
     private static final int MAX_TURN_DELAY_MILLIS = 500;
     /** Slider travel is 0–1000; delay is mapped through a square curve so the fast end isn't cramped into the left half. */
     private static final int SPEED_SLIDER_MAX = 1000;
+    private static final int REVIEW_SKIP = 10;
 
     /**
      * Two stacked rows rather than one wide row: player selection on top,
@@ -178,27 +181,26 @@ public final class GameWindow extends JFrame implements GameObserver {
         startButton.addActionListener(event -> gameEngine.start());
         pauseButton.addActionListener(event -> gameEngine.pause());
         backButton.setEnabled(false);
+        backTenButton.setEnabled(false);
         forwardButton.setEnabled(false);
-        backButton.addActionListener(event -> {
-            gameEngine.pause();
-            if (snapshotHistory.back()) {
-                showCurrentSnapshot();
-            }
-        });
-        forwardButton.addActionListener(event -> {
-            if (snapshotHistory.forward()) {
-                showCurrentSnapshot();
-            }
-        });
+        forwardTenButton.setEnabled(false);
+        backButton.addActionListener(event -> reviewBack(1));
+        backTenButton.addActionListener(event -> reviewBack(REVIEW_SKIP));
+        forwardButton.addActionListener(event -> reviewForward(1));
+        forwardTenButton.addActionListener(event -> reviewForward(REVIEW_SKIP));
         stepButton.addActionListener(event -> gameEngine.step());
         resetButton.addActionListener(event -> gameEngine.reset(currentSelections()));
         row.add(startButton);
         row.add(Box.createHorizontalStrut(8));
         row.add(pauseButton);
         row.add(Box.createHorizontalStrut(8));
+        row.add(backTenButton);
+        row.add(Box.createHorizontalStrut(8));
         row.add(backButton);
         row.add(Box.createHorizontalStrut(8));
         row.add(forwardButton);
+        row.add(Box.createHorizontalStrut(8));
+        row.add(forwardTenButton);
         row.add(Box.createHorizontalStrut(8));
         row.add(stepButton);
         row.add(Box.createHorizontalStrut(8));
@@ -313,6 +315,19 @@ public final class GameWindow extends JFrame implements GameObserver {
         history.record(snapshot);
     }
 
+    private void reviewBack(int steps) {
+        gameEngine.pause();
+        if (snapshotHistory.back(steps)) {
+            showCurrentSnapshot();
+        }
+    }
+
+    private void reviewForward(int steps) {
+        if (snapshotHistory.forward(steps)) {
+            showCurrentSnapshot();
+        }
+    }
+
     private void showCurrentSnapshot() {
         GameSnapshot snapshot = snapshotHistory.current();
         boardPanel.setSnapshot(snapshot);
@@ -321,8 +336,12 @@ public final class GameWindow extends JFrame implements GameObserver {
     }
 
     private void updateHistoryButtons() {
-        backButton.setEnabled(snapshotHistory.canGoBack());
-        forwardButton.setEnabled(snapshotHistory.canGoForward());
+        boolean canGoBack = snapshotHistory.canGoBack();
+        boolean canGoForward = snapshotHistory.canGoForward();
+        backButton.setEnabled(canGoBack);
+        backTenButton.setEnabled(canGoBack);
+        forwardButton.setEnabled(canGoForward);
+        forwardTenButton.setEnabled(canGoForward);
     }
 
     private void updateStatus(GameSnapshot snapshot) {

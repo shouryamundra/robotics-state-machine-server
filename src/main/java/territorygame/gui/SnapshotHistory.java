@@ -24,19 +24,35 @@ final class SnapshotHistory<T> {
     }
 
     boolean back() {
-        if (index <= 0) {
-            return false;
+        return back(1);
+    }
+
+    boolean back(int steps) {
+        boolean moved = false;
+        for (int i = 0; i < steps; i++) {
+            if (index <= 0) {
+                return moved;
+            }
+            index--;
+            moved = true;
         }
-        index--;
-        return true;
+        return moved;
     }
 
     boolean forward() {
-        if (index >= snapshots.size() - 1) {
-            return false;
+        return forward(1);
+    }
+
+    boolean forward(int steps) {
+        boolean moved = false;
+        for (int i = 0; i < steps; i++) {
+            if (index >= snapshots.size() - 1) {
+                return moved;
+            }
+            index++;
+            moved = true;
         }
-        index++;
-        return true;
+        return moved;
     }
 
     T current() {
