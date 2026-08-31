@@ -9,249 +9,175 @@ import territorygame.api.TerritoryView;
 import territorygame.api.VisibleCell;
 import territorygame.helpers.MovementUtils;
 
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.Random;
-import java.util.function.Predicate;
 
 /**
  * Framework code: the standard opponent used for assessment runs. Not part
  * of the candidate-facing surface.
  *
- * <p>Five states, organized by risk posture and picked fresh every turn
- * (highest priority first):
- * <ul>
- *   <li>{@code DEFENSIVE} — our owned territory just shrank since last
- *       turn, meaning an opponent capture is in progress or just landed.
- *       Chase their visible trail for a kill if we can see one (the surest
- *       way to stop it cold); otherwise fall back to heading home.
- *   <li>{@code RECEDING} — safe. Our trail is long, we're low enough on
- *       turns that pushing further risks not making it back, the opponent
- *       is visible and close while we're exposed, or we're already ahead
- *       and the match is nearly over. Head for the nearest owned territory,
- *       or shuffle around inside it if we're already there.
- *   <li>{@code AGGRESSIVE} — risky. The opponent's trail or territory is
- *       visible and we're not currently in danger; go take it. Crossing
- *       their trail kills them; cutting a loop through their territory
- *       steals it on capture.
- *   <li>{@code EXPANDING} — the default. Deterministically push toward
- *       whichever safe direction opens onto the most free space.
- *   <li>{@code WANDERING} — a rare, single-turn detour: pick at random
- *       among directions whose open-space score is merely close to the
- *       best, instead of the single best one. Never fires two turns in a
- *       row, so it's a brief nudge, not a resting state.
- * </ul>
- *
- * <p>Earlier versions of this bot got stuck in short back-and-forth loops.
- * The deeper problem is that two instances of the same deterministic logic
- * playing each other can settle into a stable cycle that isn't a repeat of
- * either agent's own positions at all — each one's "best" move depends on
- * the other's live position. Rather than detect specific cycle shapes,
- * {@code WANDERING} periodically (and briefly) makes the whole match
- * non-deterministic, which is enough to knock either agent off any cycle
- * regardless of its length.
+ * <p>Grows territory in small rectangular bites that always stay inside a
+ * configurable box around its own head — so by construction it can never be
+ * caught out in the open with no safe way home — and only fights when the
+ * opponent trespasses onto its own land.
  */
 public final class EnemyStateMachine implements AgentController {
 
-    /** Hard cap on trail length before heading home, independent of turns remaining. */
-    private static final int MAX_TRAIL_BEFORE_RETURN = 8;
-    /** Extra turns of margin required beyond the trail length itself before it's safe to keep pushing. */
-    private static final int SAFETY_TURN_BUFFER = 4;
-    /** Absolute "the match is nearly over" floor; getRemainingTurns() has no total to take a ratio of. */
-    private static final int CONSOLIDATE_TURNS_THRESHOLD = 30;
-    /** How far below the best open-space score a direction can be and still be considered "good enough" to wander into. */
-    private static final int WANDER_OPENNESS_TOLERANCE = 1;
-    /** Per-turn chance of a single WANDERING detour, skipped entirely when we just wandered last turn. */
-    private static final double RANDOM_WANDER_CHANCE = 0.01;
+    private static final int SAFETY_GRID_SIZE = 7;
+    private static final int OUT_LOOKAHEAD = 2;
 
-    private enum State {
-        DEFENSIVE, RECEDING, AGGRESSIVE, EXPANDING, WANDERING
+    private enum Phase {
+        ATTACK, REPOSITION, OUT, ACROSS, BACK
     }
 
-    private final Random random;
-    private State currentState = State.EXPANDING;
-    private int previousOwnedTerritoryCount;
-    private boolean firstMove = true;
-    private Direction direction = null;
-    private int bestOpenNeighborCount = 0;
-
-    public EnemyStateMachine() {
-        this(new Random().nextLong());
-    }
-
-    /** Two instances of this same deterministic logic need different seeds, or they'll play out identically for long stretches. */
-    public EnemyStateMachine(long seed) {
-        this.random = new Random(seed);
-    }
+    private Phase phase = Phase.OUT;
+    private Direction outDirection;
+    private int stepsOut;
+    private Direction acrossDirection;
+    private Direction repositionDirection;
+    private final Random random = new Random(42);
 
     @Override
     public void takeTurn(GameApi game) {
-        // Even with different seeds, two fresh instances facing a symmetric
-        // starting position can still tie on every heuristic and open in the
-        // same relative direction. Forcing a genuinely random opening move
-        // (not just WANDERING's near-best random pick) breaks that up front.
-        if (firstMove) {
-            firstMove = false;
-            currentState = State.WANDERING;
-            game.move(pickUniformlyRandom(game));
-            return;
+        Optional<GridPosition> intrusion = findOpponentTrailOnOurTerritory(game);
+        Direction direction;
+        if (intrusion.isPresent()) {
+            phase = Phase.ATTACK;
+            direction = pickAttack(game, intrusion.get());
+        } else if (game.getActiveTrail().isEmpty()) {
+            direction = pickTrailFree(game);
+        } else {
+            direction = pickExpedition(game);
         }
-        State previousState = currentState;
-        currentState = decideState(game, previousState);
-        Direction direction = chooseDirection(game, currentState);
         game.move(direction);
     }
 
     @Override
     public String getDebugState() {
-        return currentState.name() + " " + direction + ", bestOpenNeighborCount: " + bestOpenNeighborCount;
+        return phase.name();
     }
 
-    // ---- State selection ----------------------------------------------
+    // ---- ATTACK / REPOSITION ---------------------------------------------
 
-    private State decideState(GameApi game, State previousState) {
-        boolean territoryShrank = game.getOwnedTerritoryCellCount() < previousOwnedTerritoryCount;
-        previousOwnedTerritoryCount = game.getOwnedTerritoryCellCount();
-        if (territoryShrank) {
-            return State.DEFENSIVE;
+    /** A free kill: crossing their trail sends them back to respawn, no risk to us. */
+    private Direction pickAttack(GameApi game, GridPosition target) {
+        return chooseBest(game, huntableDirections(game), distanceTo(game, target));
+    }
+
+    /** Chooses a move on owned territory or starts OUT when the chosen move leaves it. */
+    private Direction pickTrailFree(GameApi game) {
+        List<Direction> safe = safeDirections(game);
+        List<Direction> territoryOnly = safe.stream()
+                .filter(direction -> isSelfTerritory(game, destination(game, direction)))
+                .toList();
+
+        if (repositionDirection != null
+                && territoryOnly.contains(repositionDirection)
+                && distanceToOutsideTerritory(game, repositionDirection) <= OUT_LOOKAHEAD) {
+            phase = Phase.REPOSITION;
+            return repositionDirection;
         }
-        if (shouldRecede(game)) {
-            return State.RECEDING;
+
+        List<Direction> outsideTerritory = safe.stream()
+                .filter(direction -> !territoryOnly.contains(direction))
+                .toList();
+        if (!outsideTerritory.isEmpty()) {
+            phase = Phase.OUT;
+            outDirection = outsideTerritory.contains(repositionDirection)
+                    ? repositionDirection
+                    : chooseRandom(game, preferVertical(outsideTerritory));
+            repositionDirection = null;
+            stepsOut = 1;
+            return outDirection;
         }
-        if (shouldBeAggressive(game)) {
-            return State.AGGRESSIVE;
+
+        phase = Phase.REPOSITION;
+        List<Direction> approaches = closestApproachDirections(game, territoryOnly);
+        if (!approaches.isEmpty()) {
+            repositionDirection = chooseRandom(game, approaches);
+            return repositionDirection;
         }
-        if (previousState != State.WANDERING && random.nextDouble() < RANDOM_WANDER_CHANCE) {
-            return State.WANDERING;
+        if (repositionDirection != null && territoryOnly.contains(repositionDirection)) {
+            return repositionDirection;
         }
-        return State.EXPANDING;
+        repositionDirection = chooseRandom(game, territoryOnly.isEmpty() ? safe : territoryOnly);
+        return repositionDirection;
     }
 
-    private boolean shouldRecede(GameApi game) {
-        List<GridPosition> trail = game.getActiveTrail();
-        if (!trail.isEmpty()) {
-            if (trail.size() >= MAX_TRAIL_BEFORE_RETURN) {
-                return true;
-            }
-            if (game.getRemainingTurns() <= trail.size() + SAFETY_TURN_BUFFER) {
-                return true;
-            }
-            if (opponentIsThreateninglyClose(game)) {
-                return true;
-            }
-        }
-        return isEndgameWithLead(game);
-    }
+    // ---- Expedition: OUT / ACROSS / BACK --------------------------------
 
-    private boolean shouldBeAggressive(GameApi game) {
-        return nearestOccupant(game, OccupantView.OPPONENT_TRAIL).isPresent()
-                || nearestTerritory(game, TerritoryView.OPPONENT).isPresent();
-    }
-
-    private boolean opponentIsThreateninglyClose(GameApi game) {
-        int threatDistance = game.getVisibleGrid().length / 2;
-        return nearestOccupant(game, OccupantView.OPPONENT_AGENT)
-                .map(position -> MovementUtils.manhattanDistance(game.getAgentPosition(), position) <= threatDistance)
-                .orElse(false);
-    }
-
-    private boolean isEndgameWithLead(GameApi game) {
-        return game.getRemainingTurns() <= CONSOLIDATE_TURNS_THRESHOLD
-                && game.getOwnedTerritoryCellCount() > game.getOpponentTerritoryCellCount();
-    }
-
-    // ---- Direction selection --------------------------------------------
-
-    private Direction chooseDirection(GameApi game, State state) {
-        return switch (state) {
-            case DEFENSIVE -> pickDefensive(game);
-            case RECEDING -> pickReceding(game);
-            case AGGRESSIVE -> pickAggressive(game);
-            case EXPANDING -> pickExpanding(game);
-            case WANDERING -> pickWandering(game);
+    /** Continues whichever part of an active expedition was last selected. */
+    private Direction pickExpedition(GameApi game) {
+        return switch (phase) {
+            case OUT -> pickOut(game);
+            case ACROSS -> pickAcross(game);
+            // ATTACK/REPOSITION never reach here; BACK, and any interrupted-then-resumed
+            // phase left over from an ATTACK detour, both just keep heading home.
+            default -> pickBack(game);
         };
     }
 
-    /** Chases the opponent's visible trail to stop an in-progress capture cold; otherwise falls back to heading home. */
-    private Direction pickDefensive(GameApi game) {
-        return huntOpponentTrail(game).orElseGet(() -> pickReceding(game));
+    private Direction pickOut(GameApi game) {
+        GridPosition nextHead = destination(game, outDirection);
+        if (safeDirections(game).contains(outDirection)
+                && !isSelfTerritory(game, nextHead)
+                && fitsSafetyGrid(nextHead, game.getActiveTrail(), SAFETY_GRID_SIZE)) {
+            stepsOut++;
+            return outDirection;
+        }
+        phase = Phase.ACROSS;
+        acrossDirection = pickAcrossDirection(game);
+        return pickAcross(game);
     }
 
-    /** Deterministically pushes toward whichever safe direction opens onto the most free space. */
-    private Direction pickExpanding(GameApi game) {
-        Direction best = chooseBest(safeDirections(game), mostOpenFirst(game));
-        this.direction = best;
-        this.bestOpenNeighborCount = openNeighborCount(game, best);
-        return best;
-    }
-
-    /** Stays inside our own territory if any safe move lands there (zero trail risk); otherwise heads for the nearest of it. */
-    private Direction pickReceding(GameApi game) {
-        List<Direction> withinTerritory = safeDirections(game).stream()
-                .filter(direction -> territoryAt(game, destination(game, direction)) == TerritoryView.SELF)
+    private Direction pickAcrossDirection(GameApi game) {
+        List<Direction> perpendicular = perpendicularOptions(outDirection).stream()
+                .filter(direction -> canTakeAnotherAcrossStep(game, direction))
                 .toList();
-        if (!withinTerritory.isEmpty()) {
-            return chooseBest(withinTerritory, mostOpenFirst(game));
+        if (perpendicular.isEmpty()) {
+            return outDirection; // both perpendicular options are blocked; this will fail the grid/mirror check below and fall back to BACK
         }
-        GridPosition target = nearestTerritory(game, TerritoryView.SELF).orElse(game.getRespawnPosition());
-        return chooseBest(safeDirections(game), distanceTo(game, target));
+        return chooseRandom(game, perpendicular);
     }
 
-    /** Chases the opponent's trail for a kill if one's visible; otherwise cuts toward their territory to steal it on capture. */
-    private Direction pickAggressive(GameApi game) {
-        return huntOpponentTrail(game).orElseGet(() -> {
-            GridPosition target = nearestTerritory(game, TerritoryView.OPPONENT).orElse(game.getAgentPosition());
-            return chooseBest(safeDirections(game), distanceTo(game, target));
-        });
-    }
-
-    /** Shared by DEFENSIVE and AGGRESSIVE: a direction that closes on the opponent's visible trail, if one is visible at all. */
-    private Optional<Direction> huntOpponentTrail(GameApi game) {
-        return nearestOccupant(game, OccupantView.OPPONENT_TRAIL)
-                .map(target -> chooseBest(huntableDirections(game), distanceTo(game, target)));
-    }
-
-    /** Picks at random among the directions whose open-space score is close to the best, so it's never fully predictable. */
-    private Direction pickWandering(GameApi game) {
-        List<Direction> candidates = safeDirections(game);
-        if (candidates.isEmpty()) {
-            return fallback();
+    private Direction pickAcross(GameApi game) {
+        if (canTakeAnotherAcrossStep(game)) {
+            return acrossDirection;
         }
-        int bestScore = candidates.stream().mapToInt(direction -> openNeighborCount(game, direction)).max().orElseThrow();
-        List<Direction> goodEnough = candidates.stream()
-                .filter(direction -> openNeighborCount(game, direction) >= bestScore - WANDER_OPENNESS_TOLERANCE)
-                .toList();
-        return goodEnough.get(random.nextInt(goodEnough.size()));
+        phase = Phase.BACK;
+        return pickBack(game);
     }
 
-    /** Picks uniformly among every safe direction, with no bias toward open space at all — only used for the opening move. */
-    private Direction pickUniformlyRandom(GameApi game) {
-        List<Direction> candidates = safeDirections(game);
-        if (candidates.isEmpty()) {
-            return fallback();
+    private boolean canTakeAnotherAcrossStep(GameApi game) {
+        return canTakeAnotherAcrossStep(game, acrossDirection);
+    }
+
+    private boolean canTakeAnotherAcrossStep(GameApi game, Direction direction) {
+        if (!safeDirections(game).contains(direction)) {
+            return false;
         }
-        return candidates.get(random.nextInt(candidates.size()));
-    }
-
-    private Comparator<Direction> distanceTo(GameApi game, GridPosition target) {
-        return Comparator.comparingInt(direction -> MovementUtils.manhattanDistance(destination(game, direction), target));
-    }
-
-    private Comparator<Direction> mostOpenFirst(GameApi game) {
-        return Comparator.comparingInt((Direction direction) -> openNeighborCount(game, direction)).reversed();
-    }
-
-    private Direction chooseBest(List<Direction> candidates, Comparator<Direction> ranking) {
-        if (candidates.isEmpty()) {
-            return fallback();
+        GridPosition nextHead = destination(game, direction);
+        if (!fitsSafetyGrid(nextHead, game.getActiveTrail(), SAFETY_GRID_SIZE)) {
+            return false;
         }
-        return candidates.stream().min(ranking).orElseThrow();
+        GridPosition mirrored = mirrorBack(nextHead, outDirection, stepsOut);
+        return isSelfTerritory(game, mirrored);
+    }
+
+    // ---- Shared BACK logic ------------------------------------------------
+
+    /** Walks opposite {@code outDirection}. ACROSS already required that this path lands on owned land. */
+    private Direction pickBack(GameApi game) {
+        Direction reverse = opposite(outDirection);
+        List<Direction> safe = safeDirections(game);
+        return safe.contains(reverse) ? reverse : chooseRandom(game, safe);
     }
 
     // ---- Board reading -----------------------------------------------------
 
-    /** Directions that are in bounds and land on neither trail nor the opponent's agent. */
     private List<Direction> safeDirections(GameApi game) {
         return List.of(Direction.values()).stream()
                 .filter(direction -> MovementUtils.isValidBoardMove(
@@ -265,7 +191,7 @@ public final class EnemyStateMachine implements AgentController {
                 .toList();
     }
 
-    /** Like {@link #safeDirections}, but allows stepping onto the opponent's trail — that's the point of hunting. */
+    /** Like {@link #safeDirections}, but allows stepping onto the opponent's trail — that's how a chase ends in a kill. */
     private List<Direction> huntableDirections(GameApi game) {
         return List.of(Direction.values()).stream()
                 .filter(direction -> MovementUtils.isValidBoardMove(
@@ -277,34 +203,85 @@ public final class EnemyStateMachine implements AgentController {
                 .toList();
     }
 
-    /** Count of on-board empty unowned cells cardinally adjacent to the destination. Off-board neighbors are not open. */
-    private int openNeighborCount(GameApi game, Direction direction) {
-        GridPosition destination = destination(game, direction);
-        int count = 0;
-        for (Direction neighborDirection : Direction.values()) {
-            GridPosition neighbor = MovementUtils.nextPosition(destination, neighborDirection);
-            if (isOpen(cellAt(game, neighbor))) {
-                count++;
+    private OccupantView occupantAt(GameApi game, GridPosition position) {
+        return MovementUtils.findCell(game.getVisibleGrid(), position)
+                .map(VisibleCell::occupant)
+                .orElse(OccupantView.EMPTY);
+    }
+
+    private GridPosition destination(GameApi game, Direction direction) {
+        return MovementUtils.nextPosition(game.getAgentPosition(), direction);
+    }
+
+    private List<Direction> closestApproachDirections(GameApi game, List<Direction> candidates) {
+        List<Direction> closest = new ArrayList<>();
+        int closestDistance = OUT_LOOKAHEAD + 1;
+        for (Direction direction : candidates) {
+            int distance = distanceToOutsideTerritory(game, direction);
+            if (distance < closestDistance) {
+                closest.clear();
+                closestDistance = distance;
+            }
+            if (distance == closestDistance && distance <= OUT_LOOKAHEAD) {
+                closest.add(direction);
             }
         }
-        return count;
+        return preferVertical(closest);
     }
 
-    private Optional<GridPosition> nearestOccupant(GameApi game, OccupantView occupant) {
-        return nearestVisible(game, cell -> cell.occupant() == occupant);
+    private int distanceToOutsideTerritory(GameApi game, Direction direction) {
+        GridPosition position = game.getAgentPosition();
+        for (int distance = 1; distance <= OUT_LOOKAHEAD; distance++) {
+            position = MovementUtils.nextPosition(position, direction);
+            if (!MovementUtils.isWithinBoard(position, game.getBoardWidth(), game.getBoardHeight())) {
+                break;
+            }
+            Optional<VisibleCell> cell = MovementUtils.findCell(game.getVisibleGrid(), position);
+            if (cell.isEmpty()) {
+                break;
+            }
+            if (cell.get().territory() != TerritoryView.SELF) {
+                return distance;
+            }
+        }
+        return OUT_LOOKAHEAD + 1;
     }
 
-    private Optional<GridPosition> nearestTerritory(GameApi game, TerritoryView territory) {
-        return nearestVisible(game, cell -> cell.territory() == territory);
+    private List<Direction> preferVertical(List<Direction> candidates) {
+        List<Direction> vertical = candidates.stream().filter(EnemyStateMachine::isVertical).toList();
+        return vertical.isEmpty() ? candidates : vertical;
     }
 
-    private Optional<GridPosition> nearestVisible(GameApi game, Predicate<VisibleCell> match) {
+    /** {@code false} for cells outside the visible window. */
+    private boolean isSelfTerritory(GameApi game, GridPosition position) {
+        return MovementUtils.findCell(game.getVisibleGrid(), position)
+                .map(cell -> cell.territory() == TerritoryView.SELF)
+                .orElse(false);
+    }
+
+    private Direction chooseBest(GameApi game, List<Direction> candidates, Comparator<Direction> ranking) {
+        if (candidates.isEmpty()) {
+            return fallback(game);
+        }
+        return candidates.stream().min(ranking).orElseThrow();
+    }
+
+    private Direction chooseRandom(GameApi game, List<Direction> candidates) {
+        return candidates.isEmpty() ? fallback(game) : candidates.get(random.nextInt(candidates.size()));
+    }
+
+    private Comparator<Direction> distanceTo(GameApi game, GridPosition target) {
+        return Comparator.comparingInt(direction -> MovementUtils.manhattanDistance(destination(game, direction), target));
+    }
+
+    /** Nearest visible cell where the opponent's trail is crossing land that's ours — an intrusion worth punishing. */
+    private Optional<GridPosition> findOpponentTrailOnOurTerritory(GameApi game) {
         GridPosition from = game.getAgentPosition();
         GridPosition best = null;
         int bestDistance = Integer.MAX_VALUE;
         for (VisibleCell[] row : game.getVisibleGrid()) {
             for (VisibleCell cell : row) {
-                if (match.test(cell)) {
+                if (cell.territory() == TerritoryView.SELF && cell.occupant() == OccupantView.OPPONENT_TRAIL) {
                     int distance = MovementUtils.manhattanDistance(from, cell.position());
                     if (distance < bestDistance) {
                         bestDistance = distance;
@@ -316,36 +293,56 @@ public final class EnemyStateMachine implements AgentController {
         return Optional.ofNullable(best);
     }
 
-    private GridPosition destination(GameApi game, Direction direction) {
-        return MovementUtils.nextPosition(game.getAgentPosition(), direction);
+    private Direction fallback(GameApi game) {
+        List<Direction> valid = MovementUtils.validDirections(game);
+        return valid.isEmpty() ? Direction.NORTH : valid.get(0);
     }
 
-    /** {@code null} when {@code position} is off the board (a corner or edge), not an open cell. */
-    private VisibleCell cellAt(GameApi game, GridPosition position) {
-        if (!MovementUtils.isWithinBoard(position, game.getBoardWidth(), game.getBoardHeight())) {
-            return null;
+    // ---- Pure helpers (no GameApi; unit-testable directly) ---------------
+
+    static int chebyshevDistance(GridPosition a, GridPosition b) {
+        return Math.max(Math.abs(a.x() - b.x()), Math.abs(a.y() - b.y()));
+    }
+
+    /** Every cell in {@code trail} must stay within {@code gridSize / 2} of {@code head}. Vacuously true for an empty trail. */
+    static boolean fitsSafetyGrid(GridPosition head, List<GridPosition> trail, int gridSize) {
+        int half = gridSize / 2;
+        for (GridPosition cell : trail) {
+            if (chebyshevDistance(cell, head) > half) {
+                return false;
+            }
         }
-        return MovementUtils.findCell(game.getVisibleGrid(), position)
-                .orElse(new VisibleCell(position, OccupantView.EMPTY, TerritoryView.UNOWNED));
+        return true;
     }
 
-    private OccupantView occupantAt(GameApi game, GridPosition position) {
-        VisibleCell cell = cellAt(game, position);
-        return cell == null ? null : cell.occupant();
+    static Direction opposite(Direction direction) {
+        return switch (direction) {
+            case NORTH -> Direction.SOUTH;
+            case SOUTH -> Direction.NORTH;
+            case EAST -> Direction.WEST;
+            case WEST -> Direction.EAST;
+        };
     }
 
-    private TerritoryView territoryAt(GameApi game, GridPosition position) {
-        VisibleCell cell = cellAt(game, position);
-        return cell == null ? null : cell.territory();
+    static List<Direction> perpendicularOptions(Direction direction) {
+        return switch (direction) {
+            case NORTH, SOUTH -> List.of(Direction.EAST, Direction.WEST);
+            case EAST, WEST -> List.of(Direction.NORTH, Direction.SOUTH);
+        };
     }
 
-    private static boolean isOpen(VisibleCell cell) {
-        return cell != null
-                && cell.occupant() == OccupantView.EMPTY
-                && cell.territory() == TerritoryView.UNOWNED;
+    /** Walks {@code steps} cells in the reverse of {@code outDirection} from {@code position}. */
+    static GridPosition mirrorBack(GridPosition position, Direction outDirection, int steps) {
+        GridPosition result = position;
+        Direction reverse = opposite(outDirection);
+        for (int i = 0; i < steps; i++) {
+            result = MovementUtils.nextPosition(result, reverse);
+        }
+        return result;
     }
 
-    private Direction fallback() {
-        return MovementUtils.randomDirection(random);
+    static boolean isVertical(Direction direction) {
+        return direction == Direction.NORTH || direction == Direction.SOUTH;
     }
+
 }

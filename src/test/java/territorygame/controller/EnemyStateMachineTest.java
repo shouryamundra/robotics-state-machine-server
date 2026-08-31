@@ -1,4 +1,4 @@
-package candidate.examples;
+package territorygame.controller;
 
 import org.junit.jupiter.api.Test;
 import territorygame.api.AgentController;
@@ -24,18 +24,18 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class SafetyGridStateMachineTest {
+class EnemyStateMachineTest {
 
     @Test
     void chebyshevDistanceIsTheLargerAxisDelta() {
-        assertEquals(3, SafetyGridStateMachine.chebyshevDistance(new GridPosition(0, 0), new GridPosition(3, 1)));
-        assertEquals(2, SafetyGridStateMachine.chebyshevDistance(new GridPosition(5, 5), new GridPosition(4, 3)));
-        assertEquals(0, SafetyGridStateMachine.chebyshevDistance(new GridPosition(2, 2), new GridPosition(2, 2)));
+        assertEquals(3, EnemyStateMachine.chebyshevDistance(new GridPosition(0, 0), new GridPosition(3, 1)));
+        assertEquals(2, EnemyStateMachine.chebyshevDistance(new GridPosition(5, 5), new GridPosition(4, 3)));
+        assertEquals(0, EnemyStateMachine.chebyshevDistance(new GridPosition(2, 2), new GridPosition(2, 2)));
     }
 
     @Test
     void emptyTrailAlwaysFitsRegardlessOfGridSize() {
-        assertTrue(SafetyGridStateMachine.fitsSafetyGrid(new GridPosition(10, 10), List.of(), 1));
+        assertTrue(EnemyStateMachine.fitsSafetyGrid(new GridPosition(10, 10), List.of(), 1));
     }
 
     @Test
@@ -43,7 +43,7 @@ class SafetyGridStateMachineTest {
         GridPosition head = new GridPosition(5, 5);
         List<GridPosition> trail = List.of(new GridPosition(5, 4), new GridPosition(5, 5));
 
-        assertTrue(SafetyGridStateMachine.fitsSafetyGrid(head, trail, 5)); // half = 2, distance = 1
+        assertTrue(EnemyStateMachine.fitsSafetyGrid(head, trail, 5)); // half = 2, distance = 1
     }
 
     @Test
@@ -51,33 +51,33 @@ class SafetyGridStateMachineTest {
         GridPosition head = new GridPosition(5, 5);
         List<GridPosition> trail = List.of(new GridPosition(2, 5), new GridPosition(5, 5)); // distance 3
 
-        assertFalse(SafetyGridStateMachine.fitsSafetyGrid(head, trail, 5)); // half = 2
+        assertFalse(EnemyStateMachine.fitsSafetyGrid(head, trail, 5)); // half = 2
     }
 
     @Test
     void oppositeReturnsTheReverseCardinalDirection() {
-        assertEquals(Direction.SOUTH, SafetyGridStateMachine.opposite(Direction.NORTH));
-        assertEquals(Direction.NORTH, SafetyGridStateMachine.opposite(Direction.SOUTH));
-        assertEquals(Direction.WEST, SafetyGridStateMachine.opposite(Direction.EAST));
-        assertEquals(Direction.EAST, SafetyGridStateMachine.opposite(Direction.WEST));
+        assertEquals(Direction.SOUTH, EnemyStateMachine.opposite(Direction.NORTH));
+        assertEquals(Direction.NORTH, EnemyStateMachine.opposite(Direction.SOUTH));
+        assertEquals(Direction.WEST, EnemyStateMachine.opposite(Direction.EAST));
+        assertEquals(Direction.EAST, EnemyStateMachine.opposite(Direction.WEST));
     }
 
     @Test
     void perpendicularOptionsForNorthSouthAreEastWest() {
-        assertEquals(List.of(Direction.EAST, Direction.WEST), SafetyGridStateMachine.perpendicularOptions(Direction.NORTH));
-        assertEquals(List.of(Direction.EAST, Direction.WEST), SafetyGridStateMachine.perpendicularOptions(Direction.SOUTH));
+        assertEquals(List.of(Direction.EAST, Direction.WEST), EnemyStateMachine.perpendicularOptions(Direction.NORTH));
+        assertEquals(List.of(Direction.EAST, Direction.WEST), EnemyStateMachine.perpendicularOptions(Direction.SOUTH));
     }
 
     @Test
     void perpendicularOptionsForEastWestAreNorthSouth() {
-        assertEquals(List.of(Direction.NORTH, Direction.SOUTH), SafetyGridStateMachine.perpendicularOptions(Direction.EAST));
-        assertEquals(List.of(Direction.NORTH, Direction.SOUTH), SafetyGridStateMachine.perpendicularOptions(Direction.WEST));
+        assertEquals(List.of(Direction.NORTH, Direction.SOUTH), EnemyStateMachine.perpendicularOptions(Direction.EAST));
+        assertEquals(List.of(Direction.NORTH, Direction.SOUTH), EnemyStateMachine.perpendicularOptions(Direction.WEST));
     }
 
     @Test
     void mirrorBackWalksTheOppositeOfOutDirectionForStepsOutSteps() {
         GridPosition position = new GridPosition(5, 3); // 2 north, then 3 east of a (5,5) start
-        GridPosition mirrored = SafetyGridStateMachine.mirrorBack(position, Direction.NORTH, 2);
+        GridPosition mirrored = EnemyStateMachine.mirrorBack(position, Direction.NORTH, 2);
 
         assertEquals(new GridPosition(5, 5), mirrored); // 2 steps south (opposite of north) from (5,3)
     }
@@ -86,22 +86,22 @@ class SafetyGridStateMachineTest {
     void mirrorBackWithZeroStepsReturnsTheSamePosition() {
         GridPosition position = new GridPosition(7, 7);
 
-        assertEquals(position, SafetyGridStateMachine.mirrorBack(position, Direction.EAST, 0));
+        assertEquals(position, EnemyStateMachine.mirrorBack(position, Direction.EAST, 0));
     }
 
     @Test
     void isVerticalIsTrueOnlyForNorthAndSouth() {
-        assertTrue(SafetyGridStateMachine.isVertical(Direction.NORTH));
-        assertTrue(SafetyGridStateMachine.isVertical(Direction.SOUTH));
-        assertFalse(SafetyGridStateMachine.isVertical(Direction.EAST));
-        assertFalse(SafetyGridStateMachine.isVertical(Direction.WEST));
+        assertTrue(EnemyStateMachine.isVertical(Direction.NORTH));
+        assertTrue(EnemyStateMachine.isVertical(Direction.SOUTH));
+        assertFalse(EnemyStateMachine.isVertical(Direction.EAST));
+        assertFalse(EnemyStateMachine.isVertical(Direction.WEST));
     }
 
     @Test
     void repositionKeepsItsRandomDirectionWhileValid() {
         VisibleCell[][] grid = filledGrid(7, TerritoryView.SELF);
         StubGameApi game = new StubGameApi(new GridPosition(3, 3), new GridPosition(0, 3), grid);
-        SafetyGridStateMachine controller = new SafetyGridStateMachine();
+        EnemyStateMachine controller = new EnemyStateMachine();
 
         controller.takeTurn(game);
         Direction committed = game.movedDirection;
@@ -119,7 +119,7 @@ class SafetyGridStateMachineTest {
         grid[3][6] = new VisibleCell(new GridPosition(6, 3), OccupantView.EMPTY, TerritoryView.OPPONENT);
         grid[2][4] = new VisibleCell(new GridPosition(4, 2), OccupantView.EMPTY, TerritoryView.UNOWNED);
         StubGameApi game = new StubGameApi(new GridPosition(3, 3), new GridPosition(0, 3), grid);
-        SafetyGridStateMachine controller = new SafetyGridStateMachine();
+        EnemyStateMachine controller = new EnemyStateMachine();
 
         controller.takeTurn(game);
         assertEquals("REPOSITION", controller.getDebugState());
@@ -143,7 +143,7 @@ class SafetyGridStateMachineTest {
         grid[3][5] = new VisibleCell(new GridPosition(5, 3), OccupantView.EMPTY, TerritoryView.OPPONENT);
         StubGameApi game = new StubGameApi(new GridPosition(3, 3), new GridPosition(0, 3), grid);
 
-        new SafetyGridStateMachine().takeTurn(game);
+        new EnemyStateMachine().takeTurn(game);
 
         assertEquals(Direction.EAST, game.movedDirection);
     }
@@ -155,7 +155,7 @@ class SafetyGridStateMachineTest {
         grid[3][5] = new VisibleCell(new GridPosition(5, 3), OccupantView.EMPTY, TerritoryView.OPPONENT);
         StubGameApi game = new StubGameApi(new GridPosition(3, 3), new GridPosition(0, 3), grid);
 
-        new SafetyGridStateMachine().takeTurn(game);
+        new EnemyStateMachine().takeTurn(game);
 
         assertEquals(Direction.NORTH, game.movedDirection);
     }
@@ -172,7 +172,7 @@ class SafetyGridStateMachineTest {
         }
         StubGameApi game = new StubGameApi(new GridPosition(3, 3), new GridPosition(0, 3), grid);
 
-        new SafetyGridStateMachine().takeTurn(game);
+        new EnemyStateMachine().takeTurn(game);
 
         assertEquals(Direction.NORTH, game.movedDirection);
     }
@@ -185,7 +185,7 @@ class SafetyGridStateMachineTest {
         }
         grid[2][3] = new VisibleCell(new GridPosition(3, 2), OccupantView.EMPTY, TerritoryView.OPPONENT);
         StubGameApi game = new StubGameApi(new GridPosition(2, 2), new GridPosition(0, 2), grid);
-        SafetyGridStateMachine controller = new SafetyGridStateMachine();
+        EnemyStateMachine controller = new EnemyStateMachine();
 
         controller.takeTurn(game);
 
@@ -198,7 +198,7 @@ class SafetyGridStateMachineTest {
         VisibleCell[][] grid = filledGrid(TerritoryView.SELF);
         grid[2][3] = new VisibleCell(new GridPosition(3, 2), OccupantView.EMPTY, TerritoryView.OPPONENT);
         StubGameApi game = new StubGameApi(new GridPosition(2, 2), new GridPosition(0, 2), grid);
-        SafetyGridStateMachine controller = new SafetyGridStateMachine();
+        EnemyStateMachine controller = new EnemyStateMachine();
 
         controller.takeTurn(game);
         assertEquals(Direction.EAST, game.movedDirection);
@@ -216,7 +216,7 @@ class SafetyGridStateMachineTest {
         VisibleCell[][] grid = filledGrid(7, TerritoryView.SELF);
         grid[3][3] = new VisibleCell(new GridPosition(3, 3), OccupantView.EMPTY, TerritoryView.OPPONENT);
         StubGameApi game = new StubGameApi(new GridPosition(2, 3), new GridPosition(0, 3), grid);
-        SafetyGridStateMachine controller = new SafetyGridStateMachine();
+        EnemyStateMachine controller = new EnemyStateMachine();
 
         controller.takeTurn(game);
         assertEquals(Direction.EAST, game.movedDirection);
@@ -231,28 +231,37 @@ class SafetyGridStateMachineTest {
     }
 
     @Test
-    void avoidDoesNotContinueFartherOutWhenReturnMovesTie() {
-        VisibleCell[][] grid = filledGrid(7, TerritoryView.UNOWNED);
-        grid[4][3] = new VisibleCell(new GridPosition(3, 4), OccupantView.EMPTY, TerritoryView.SELF);
-        grid[5][3] = new VisibleCell(new GridPosition(3, 5), OccupantView.EMPTY, TerritoryView.SELF);
-        StubGameApi game = new StubGameApi(new GridPosition(3, 4), new GridPosition(0, 3), grid);
-        SafetyGridStateMachine controller = new SafetyGridStateMachine();
+    void backRetracesOppositeOfOutDirection() {
+        VisibleCell[][] grid = filledGrid(7, TerritoryView.SELF);
+        grid[3][3] = new VisibleCell(new GridPosition(3, 3), OccupantView.EMPTY, TerritoryView.UNOWNED);
+        grid[3][4] = new VisibleCell(new GridPosition(4, 3), OccupantView.EMPTY, TerritoryView.UNOWNED);
+        StubGameApi game = new StubGameApi(new GridPosition(2, 3), new GridPosition(0, 3), grid);
+        EnemyStateMachine controller = new EnemyStateMachine();
 
         controller.takeTurn(game);
-        game.position = new GridPosition(3, 3);
-        game.activeTrail = List.of(new GridPosition(3, 3));
-        controller.takeTurn(game);
-
-        grid[3][3] = new VisibleCell(
-                new GridPosition(3, 3), OccupantView.SELF_TRAIL, TerritoryView.UNOWNED);
-        grid[2][6] = new VisibleCell(
-                new GridPosition(6, 2), OccupantView.OPPONENT_AGENT, TerritoryView.UNOWNED);
-        game.position = new GridPosition(3, 2);
-        game.activeTrail = List.of(new GridPosition(3, 3), new GridPosition(3, 2));
-        controller.takeTurn(game);
-
-        assertEquals("AVOID", controller.getDebugState());
         assertEquals(Direction.EAST, game.movedDirection);
+
+        game.position = new GridPosition(3, 3);
+        game.activeTrail = List.of(new GridPosition(2, 3));
+        controller.takeTurn(game);
+        assertEquals(Direction.EAST, game.movedDirection);
+
+        grid[2][2] = new VisibleCell(new GridPosition(2, 2), OccupantView.EMPTY, TerritoryView.UNOWNED);
+        grid[4][3] = new VisibleCell(new GridPosition(3, 4), OccupantView.EMPTY, TerritoryView.UNOWNED);
+        grid[4][4] = new VisibleCell(new GridPosition(4, 4), OccupantView.EMPTY, TerritoryView.UNOWNED);
+        game.position = new GridPosition(4, 3);
+        game.activeTrail = List.of(new GridPosition(2, 3), new GridPosition(3, 3));
+        controller.takeTurn(game);
+        assertEquals("ACROSS", controller.getDebugState());
+        assertEquals(Direction.SOUTH, game.movedDirection);
+
+        grid[5][2] = new VisibleCell(new GridPosition(2, 5), OccupantView.EMPTY, TerritoryView.UNOWNED);
+        game.position = new GridPosition(4, 4);
+        game.activeTrail = List.of(new GridPosition(2, 3), new GridPosition(3, 3), new GridPosition(4, 3), new GridPosition(4, 4));
+        controller.takeTurn(game);
+
+        assertEquals("BACK", controller.getDebugState());
+        assertEquals(Direction.WEST, game.movedDirection);
     }
 
     @Test
@@ -261,7 +270,7 @@ class SafetyGridStateMachineTest {
         grid[2][3] = new VisibleCell(
                 new GridPosition(3, 2), OccupantView.OPPONENT_TRAIL, TerritoryView.OPPONENT);
         StubGameApi game = new StubGameApi(new GridPosition(2, 2), new GridPosition(0, 2), grid);
-        SafetyGridStateMachine controller = new SafetyGridStateMachine();
+        EnemyStateMachine controller = new EnemyStateMachine();
 
         controller.takeTurn(game);
 
@@ -278,8 +287,8 @@ class SafetyGridStateMachineTest {
                 20, List.of(1L, 2L)
         );
         List<AgentController> controllers = List.of(
-                new SafetyGridStateMachine(),
-                new SafetyGridStateMachine()
+                new EnemyStateMachine(),
+                new EnemyStateMachine()
         );
         GameEngine engine = new GameEngine(config, controllers);
         BlockingQueue<GameSnapshot> snapshots = new LinkedBlockingQueue<>();

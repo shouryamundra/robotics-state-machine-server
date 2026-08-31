@@ -48,13 +48,16 @@ public final class MoveResolver {
             return MoveResult.DIED;
         }
 
-        // Move the mover onto its destination before respawning a killed
-        // opponent, so RespawnService's occupancy check sees where the mover
-        // actually ends up rather than where it moved from. Otherwise, if the
-        // mover is stepping onto the opponent's own respawn point, the
-        // opponent could respawn there and the mover would then move onto the
-        // same cell.
+        // Move first so occupancy checks see the mover's destination. Capture
+        // before a same-tick kill so the flood-fill can claim enclosed land
+        // (including the opponent's start); respawn then restores the start.
         moverAgent.setPosition(destination);
+
+        PlayerId territoryOwnerAtDestination = board.territoryOwnerAt(destination);
+        boolean captured = moverId.equals(territoryOwnerAtDestination) && !moverAgent.isTrailEmpty();
+        if (captured) {
+            territoryResolver.applyCapture(state, moverId);
+        }
 
         if (opponent.getId().equals(trailOwnerAtDestination)) {
             respawnService.respawn(state, opponent.getId());
@@ -62,9 +65,7 @@ public final class MoveResolver {
             state.incrementDeathCount(opponent.getId());
         }
 
-        PlayerId territoryOwnerAtDestination = board.territoryOwnerAt(destination);
-        if (moverId.equals(territoryOwnerAtDestination) && !moverAgent.isTrailEmpty()) {
-            territoryResolver.applyCapture(state, moverId);
+        if (captured) {
             state.decrementRemainingTurns(moverId);
             return MoveResult.CAPTURED;
         }

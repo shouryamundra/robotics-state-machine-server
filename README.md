@@ -48,9 +48,8 @@ mvnw.cmd compile exec:java   # Windows (cmd or PowerShell)
 ```
 
 In the GUI, pick which controller occupies each player slot (Basic State
-Machine, Safety Grid State Machine, Enemy State Machine, Random State
-Machine, or the candidate's own controller), then use Start / Pause / Step
-/ Reset to run a match.
+Machine, Enemy State Machine, Random State Machine, or the candidate's own
+controller), then use Start / Pause / Step / Reset to run a match.
 
 ## Candidate assessment
 
@@ -113,8 +112,6 @@ src/main/java/candidate/
                               (a deliberately weak state-machine example) and
                               RandomStateMachine (the simplest possible baseline)
                               are not templates for a good strategy.
-                              SafetyGridStateMachine is — simple, but a
-                              genuinely effective one worth studying.
 
 src/test/java/...            mirrors the main package layout.
 ```

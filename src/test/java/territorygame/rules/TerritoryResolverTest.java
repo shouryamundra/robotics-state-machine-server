@@ -71,11 +71,18 @@ class TerritoryResolverTest {
     }
 
     @Test
-    void captureDoesNotClaimOpponentStartingTerritory() {
+    void captureDoesNotFillAnAlreadyEnclosedOpponentIsland() {
+        GridPosition island = new GridPosition(6, 6);
+        List<GridPosition> capturerTerritory = List.of(
+                HOME,
+                new GridPosition(5, 5), new GridPosition(6, 5), new GridPosition(7, 5),
+                new GridPosition(5, 6),                         new GridPosition(7, 6),
+                new GridPosition(5, 7), new GridPosition(6, 7), new GridPosition(7, 7)
+        );
         GameState state = TestGames.twoPlayerState(
                 8, 8,
-                HOME, List.of(HOME),
-                ENCLOSED, List.of(ENCLOSED),
+                HOME, capturerTerritory,
+                island, List.of(island),
                 10
         );
         for (GridPosition cell : PERIMETER) {
@@ -85,8 +92,8 @@ class TerritoryResolverTest {
 
         resolver.applyCapture(state, capturer);
 
-        assertEquals(opponent, state.getBoard().territoryOwnerAt(ENCLOSED));
-        assertEquals(1, state.getBoard().territoryCount(opponent));
+        assertEquals(capturer, state.getBoard().territoryOwnerAt(ENCLOSED));
+        assertEquals(opponent, state.getBoard().territoryOwnerAt(island));
     }
 
     @Test

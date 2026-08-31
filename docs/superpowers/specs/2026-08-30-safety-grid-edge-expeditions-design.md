@@ -6,7 +6,7 @@ Make `SafetyGridStateMachine` leave its territory without using a global open-sp
 
 ## State selection
 
-ATTACK and AVOID retain their current priority and behavior.
+ATTACK retains its current priority and behavior. There is no AVOID state: a visible opponent does not interrupt expeditions.
 
 When the active trail is empty, select the next move once and let its destination determine the state:
 
@@ -29,7 +29,7 @@ Before ordinary random movement, inspect each safe owned cardinal direction up t
 2. If any of those rays are vertical, keep only the vertical rays.
 3. Choose randomly among the remaining rays and commit to that direction.
 
-This is still REPOSITION while the approach crosses `SELF` territory. Clear `repositionDirection` only after its next step starts OUT. ATTACK or AVOID may temporarily interrupt REPOSITION without clearing its direction.
+This is still REPOSITION while the approach crosses `SELF` territory. Clear `repositionDirection` only after its next step starts OUT. ATTACK may temporarily interrupt REPOSITION without clearing its direction.
 
 ## Random choices
 
@@ -39,7 +39,7 @@ OUT considers only safe directions whose adjacent destination is not `SELF` terr
 
 If no safe non-`SELF` move exists, remain on owned territory using REPOSITION rather than entering OUT through its generic fallback.
 
-ACROSS chooses randomly among safe perpendicular directions. BACK chooses randomly among safe moves that remain on `SELF` territory. AVOID continues to maximize distance from the opponent, without an open-space tie-break.
+ACROSS chooses randomly among safe perpendicular directions. BACK chooses randomly among safe moves that remain on `SELF` territory.
 
 ## Safety grid and visibility
 
